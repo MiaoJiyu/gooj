@@ -1,11 +1,15 @@
 package sql_service
 
 import (
+	"fmt"
 	"os"
 
+	"gorm.io/driver/mysql"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/minicago/gooj/config"
 )
 
 var db *gorm.DB
@@ -18,18 +22,37 @@ var db *gorm.DB
 // 	CanView   bool   // Permission to view problems
 // }
 
-// Init initializes the SQLite database at the specified path
-func Init(path string) error {
+// Init initializes the database based on configuration
+func Init() error {
 	var err error
-	db, err = gorm.Open(sqlite.Open(path), &gorm.Config{})
-	db.Logger = logger.Default.LogMode(logger.Silent)
-	if err != nil {
-		return err
+	dbType := config.GetDatabaseType()
+
+	switch dbType {
+	case config.DatabaseTypeSQLite:
+		path := config.GetSQLitePath()
+		db, err = gorm.Open(sqlite.Open(path), &gorm.Config{})
+		if err != nil {
+			return fmt.Errorf("failed to open SQLite database: %w", err)
+		}
+	case config.DatabaseTypeMySQL:
+		mysqlCfg := config.GetMySQLConfig()
+		dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+			mysqlCfg.User, mysqlCfg.Password, mysqlCfg.Host, mysqlCfg.Port, mysqlCfg.DBName)
+		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+		if err != nil {
+			return fmt.Errorf("failed to open MySQL database: %w", err)
+		}
+	default:
+		return fmt.Errorf("unsupported database type: %s", dbType)
 	}
+
+	db.Logger = logger.Default.LogMode(logger.Silent)
+
 	// Migrate the schema
 	if err := db.AutoMigrate(&User{}, &Group{}, &Submission{}, &TestResult{}, &Problem{}); err != nil {
-		return err
+		return fmt.Errorf("failed to migrate database: %w", err)
 	}
+
 	// Load problems from file if it exists
 	if _, err := os.Stat("data/problem_list.json"); err == nil {
 		_ = loadProblemsFromFile("data/problem_list.json")

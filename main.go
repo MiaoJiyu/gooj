@@ -2,8 +2,10 @@ package main
 
 import (
 	"flag"
+	"fmt"
 
 	"github.com/minicago/gooj/cmd"
+	"github.com/minicago/gooj/config"
 	"github.com/minicago/gooj/server"
 )
 
@@ -12,9 +14,18 @@ func main() {
 
 	var method string
 	var background bool
+	var configPath string
 	flag.StringVar(&method, "method", "None", "run | cmd")
 	flag.BoolVar(&background, "background", false, "--background = true | false")
+	flag.StringVar(&configPath, "config", "config/config.yaml", "path to config file")
 	flag.Parse()
+
+	// Load configuration
+	if err := config.Load(configPath); err != nil {
+		fmt.Printf("Warning: failed to load config: %v, using defaults\n", err)
+	} else {
+		fmt.Printf("Configuration loaded from %s\n", configPath)
+	}
 
 	// // Initialize the SQLite database
 	// if err := sql_service.Init("data/app.db"); err != nil {

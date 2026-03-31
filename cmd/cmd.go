@@ -6,6 +6,8 @@ import (
 	"net"
 	"os"
 	"strings"
+
+	"github.com/minicago/gooj/config"
 )
 
 func process(conn net.Conn, cmdChan chan string) {
@@ -34,7 +36,8 @@ func process(conn net.Conn, cmdChan chan string) {
 }
 
 func StartCmdServer(cmdChan chan string, shutdownChan chan int) {
-	listen, err := net.Listen("tcp", "127.0.0.1:9090")
+	addr := config.GetCmdAddr()
+	listen, err := net.Listen("tcp", addr)
 	if err != nil {
 		fmt.Printf("listen failed, err:%v\n", err)
 		return
@@ -57,7 +60,8 @@ func StartCmdServer(cmdChan chan string, shutdownChan chan int) {
 }
 
 func StartCmdConsole() {
-	conn, err := net.Dial("tcp", "127.0.0.1:9090")
+	addr := config.GetCmdAddr()
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		fmt.Printf("conn server failed, err:%v\n", err)
 		return

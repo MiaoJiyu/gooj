@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/minicago/gooj/cmd"
+	"github.com/minicago/gooj/config"
 	"github.com/minicago/gooj/file_service"
 	"github.com/minicago/gooj/judge"
 	"github.com/minicago/gooj/manage"
@@ -19,8 +20,9 @@ import (
 func listen(cmdChan chan string) {
 	handler := web.NewRouter()
 
+	addr := fmt.Sprintf(":%d", config.GetServerPort())
 	srv := http.Server{
-		Addr:    ":8081",
+		Addr:    addr,
 		Handler: handler,
 	}
 
@@ -29,7 +31,7 @@ func listen(cmdChan chan string) {
 			log.Fatalf("%v", err)
 		}
 	}()
-	fmt.Println("listening on :8081")
+	fmt.Printf("listening on %s\n", addr)
 
 	for {
 		cmdStr := <-cmdChan
@@ -64,11 +66,31 @@ func StartServer(isbackground bool) {
 			return
 		}
 	}
-	if err := sql_service.Init("data/app.db"); err != nil {
-		panic(err)
+
+	// Start services based on configuration
+	if config.IsSQLEnabled() {
+		if err := sql_service.Init(); err != nil {
+			panic(err)
+		}
+		log.Println("SQL service started")
+	} else {
+		log.Println("SQL service disabled")
 	}
-	file_service.StartDefault()
-	judge.StartJudge()
+
+	if config.IsFileEnabled() {
+		file_service.StartDefault()
+		log.Println("File service started")
+	} else {
+		log.Println("File service disabled")
+	}
+
+	if config.IsJudgeEnabled() {
+		judge.StartJudge()
+		log.Println("Judge service started")
+	} else {
+		log.Println("Judge service disabled")
+	}
+
 	manage.Init()
 	cmdChan := make(chan string)
 	shutdownChan := make(chan int)
