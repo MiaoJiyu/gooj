@@ -150,10 +150,6 @@
               <input type="text" id="infoID" readonly />
             </div>
             <div class="info-item">
-              <label>题目名称</label>
-              <input type="text" id="infoName" placeholder="题目名称" />
-            </div>
-            <div class="info-item">
               <label>题目标题</label>
               <input type="text" id="infoTitle" placeholder="题目标题" />
             </div>
@@ -265,7 +261,6 @@
           // Fill in problem info
           document.getElementById('problemID').value = problemID;
           document.getElementById('infoID').value = data.id || '';
-          document.getElementById('infoName').value = data.name || '';
           document.getElementById('infoTitle').value = data.title || '';
           document.getElementById('infoTimeLimit').value = data.time_limit_ms || '';
           document.getElementById('infoMemLimit').value = data.mem_limit_mb || '';
@@ -331,7 +326,6 @@
         
         const publicTimeValue = document.getElementById('infoPublicTime').value.trim();
         const updateData = {
-          name: document.getElementById('infoName').value.trim(),
           title: document.getElementById('infoTitle').value.trim(),
           description: document.getElementById('markdownEditor').value,
           time_limit_ms: parseInt(document.getElementById('infoTimeLimit').value) || 0,
@@ -339,8 +333,8 @@
           public_time: publicTimeValue ? new Date(publicTimeValue).toISOString() : ''
         };
         
-        if (!updateData.name || !updateData.title) {
-          return alert('题目名称和标题不能为空');
+        if (!updateData.title) {
+          return alert('题目标题不能为空');
         }
         
         try {
@@ -419,7 +413,6 @@
 
           const data = await res.json();
           preview.innerHTML = `<p style="color: green;">导入成功！</p>
-            <p>题目名称：${data.name || ''}</p>
             <p>题目标题：${data.title || ''}</p>
             <p>题面已更新，测试数据已导入</p>`;
 

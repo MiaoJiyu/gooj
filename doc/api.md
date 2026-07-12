@@ -33,11 +33,13 @@
 **功能**: 提交代码进行评测。
 **输入**:
 	- username (string): 用户名。
-	- problem (string): 题目编号或名称。
+	- problem (string): 题目编号（仅支持数字 `id`）。
 	- code (string): 用户提交的源代码。
 **输出**:
 	- status (string): 状态，通常为"queued"（已入队）。
 	- submission_id (int): 本次提交的唯一ID。
+
+> URL/查询参数约定：前端和后端统一使用 `id` 表示题目编号，禁止再按 `name` 进行题目检索。
 
 
 ### /problem [GET]
@@ -89,7 +91,7 @@
 **功能**: 获取某用户对某题目的最近一次提交及其评测结果。
 **输入**:
 	- username (string): 用户名。
-	- problem (string): 题目编号或名称。
+	- problem (string): 题目编号（仅支持数字 `id`）。
 **输出**:
 	- submission (object): 最近一次提交对象，字段如下：
 		- submission_id (int): 提交ID。
@@ -113,7 +115,7 @@
 **功能**: 获取某用户某题目的评测结果明细。
 **输入**:
 	- user (string): 用户名。
-	- problem (string): 题目编号或名称。
+	- problem (string): 题目编号（仅支持数字 `id`）。
 **输出**: 评测结果内容或错误信息。
 
 
@@ -121,14 +123,14 @@
 **功能**: 获取某用户某题目的最后一次提交代码。
 **输入**:
 	- user (string): 用户名。
-	- problem (string): 题目编号或名称。
+	- problem (string): 题目编号（仅支持数字 `id`）。
 **输出**: 代码内容或错误信息。
 
 
 ### /api/problem/{id} [GET]
 **功能**: 获取题目的描述和配置信息。
 **输入**:
-	- id (string/int): 题目编号或名称。
+	- id (string/int): 题目编号（仅支持数字 `id`）。
 **输出**:
 	- statement.md (string): 题目描述（Markdown文本）。
 	- config.json (object): 题目配置信息，字段如 time_limit, memory_limit, test_cases 等。
@@ -291,7 +293,7 @@
 **输入**:
 	- page (int): 页码。
 	- limit (int): 每页数量。
-	- problem (string): 题目编号或名称（可选）。
+	- problem (string): 题目编号（仅支持数字 `id`，可选）。
 	- username (string): 用户名（可选）。
 **输出**:
 	- total (int): 总记录数。
@@ -310,5 +312,5 @@
 ### /api/problem_stats [GET]
 **功能**: 获取题目的统计信息。
 **输入**:
-	- problem (string): 题目编号或名称。
+	- problem (string): 题目编号（仅支持数字 `id`）。
 **输出**: 统计信息JSON。

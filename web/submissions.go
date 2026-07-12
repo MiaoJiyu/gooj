@@ -58,9 +58,14 @@ func GetSubmissionsHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := db.Model(&sql_service.Submission{})
 
-	// Filter by problem if specified
+	// Filter by problem if specified. The submission stores the numeric problem id.
 	if problem != "" {
-		query = query.Where("problem = ?", problem)
+		problemID, err := parseProblemID(problem)
+		if err != nil {
+			http.Error(w, "invalid problem id", http.StatusBadRequest)
+			return
+		}
+		query = query.Where("problem_id = ?", problemID)
 	}
 
 	// Filter by username if specified
@@ -149,9 +154,10 @@ func GetProblemStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	problemID := r.URL.Query().Get("problem")
-	if problemID == "" {
-		http.Error(w, "Problem ID required", http.StatusBadRequest)
+	problemIDStr := r.URL.Query().Get("problem")
+	problemID, err := parseProblemID(problemIDStr)
+	if err != nil {
+		http.Error(w, "invalid problem id", http.StatusBadRequest)
 		return
 	}
 
@@ -159,7 +165,7 @@ func GetProblemStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Get total number of users who passed this problem
 	var passedCount int64
-	err := db.Model(&sql_service.Submission{}).
+	err = db.Model(&sql_service.Submission{}).
 		Where("problem_id = ? AND status = 'accepted'", problemID).
 		Distinct("username").
 		Count(&passedCount).Error

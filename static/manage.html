@@ -48,10 +48,10 @@
 
       <div class="card">
         <h1>比赛管理</h1>
-        <div class="form-group">
+        <!-- <div class="form-group">
           <label>比赛名称</label>
           <input id="contestName" type="text" placeholder="例如：2026校赛" />
-        </div>
+        </div> -->
         <div class="form-group">
           <label>比赛标题</label>
           <input id="contestTitle" type="text" placeholder="比赛标题" />
@@ -118,7 +118,6 @@
           problems.forEach(problem => {
             const tr = document.createElement('tr');
             const problemId = problem.ID || problem.id || '';
-            const name = problem.Name || problem.name || '';
             const title = problem.Title || problem.title || '';
             const testsCount = problem.TestsCount || problem.testsCount || 0;
             tr.innerHTML = `
@@ -247,8 +246,8 @@
         const startAt = document.getElementById('contestStartAt').value;
         const endAt = document.getElementById('contestEndAt').value;
         const problemIDs = document.getElementById('contestProblemIDs').value.trim();
-        if (!name || !title || !startAt || !endAt) {
-          return alert('请填写比赛名称、标题和时间');
+        if (!title || !startAt || !endAt) {
+          return alert('请填写比赛标题和时间');
         }
         const ids = problemIDs ? problemIDs.split(',').map(v => Number(v.trim())).filter(Boolean) : [];
         try {

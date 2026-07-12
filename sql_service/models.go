@@ -64,8 +64,8 @@ type TestResult struct {
 
 // Problem model represents a coding problem
 type Problem struct {
-	ID          uint   `gorm:"primaryKey"`
-	Name        string `gorm:"uniqueIndex;size:128"`
+	ID uint `gorm:"primaryKey"`
+	// Name        string `gorm:"uniqueIndex;size:128"`
 	Title       string `gorm:"size:256"`
 	Description string `gorm:"type:text"`
 	TestsCount  int
@@ -76,8 +76,8 @@ type Problem struct {
 
 // Contest represents a contest with an associated problem set and a leaderboard.
 type Contest struct {
-	ID          uint      `gorm:"primaryKey"`
-	Name        string    `gorm:"uniqueIndex;size:128"`
+	ID uint `gorm:"primaryKey"`
+	// Name        string    `gorm:"uniqueIndex;size:128"`
 	Title       string    `gorm:"size:256"`
 	Description string    `gorm:"type:text"`
 	StartAt     time.Time `gorm:"index"`

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/minicago/gooj/sql_service"
@@ -13,7 +14,7 @@ import (
 // SubmitRequest represents the JSON payload sent from the /code page
 type SubmitRequest struct {
 	Username string `json:"username"`
-	Problem  string `json:"problem"` // Can be ID or Name
+	Problem  string `json:"problem"` // Problem ID only
 	Code     string `json:"code"`
 }
 
@@ -32,21 +33,10 @@ func SubmitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve problem ID or Name to actual problem name for consistency
-	problemID := uint(0)
-	db := sql_service.DB()
-	if db != nil {
-		// Try to find problem by ID
-		var problem sql_service.Problem
-		if err := db.First(&problem, req.Problem).Error; err == nil {
-			// Found by ID, store the Name instead
-			problemID = problem.ID
-		} else {
-			// Try to find by Name
-			if err := db.Where("name = ?", req.Problem).First(&problem).Error; err == nil {
-				problemID = problem.ID
-			}
-		}
+	problemID, err := parseProblemID(req.Problem)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	// prepare directories and save code
@@ -89,24 +79,13 @@ func ResultHandler(w http.ResponseWriter, r *http.Request) {
 	user := parts[1]
 	problem := parts[2]
 
-	// Resolve problem ID or Name to actual problem name for consistency
-	problemName := problem
-	db := sql_service.DB()
-	if db != nil {
-		// Try to find problem by ID
-		var prob sql_service.Problem
-		if err := db.First(&prob, problem).Error; err == nil {
-			// Found by ID, use the Name
-			problemName = prob.Name
-		} else {
-			// Try to find by Name
-			if err := db.Where("name = ?", problem).First(&prob).Error; err == nil {
-				problemName = prob.Name
-			}
-		}
+	problemID, err := parseProblemID(problem)
+	if err != nil {
+		http.Error(w, "invalid problem id", http.StatusBadRequest)
+		return
 	}
 
-	p := filepath.Join("data/user/", user, problemName+".result")
+	p := filepath.Join("data/user/", user, strconv.FormatUint(uint64(problemID), 10)+".result")
 	data, err := os.ReadFile(p)
 	if err != nil {
 		http.Error(w, "no result", http.StatusNotFound)

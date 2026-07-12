@@ -40,11 +40,11 @@ func GetContestByID(id uint) (Contest, error) {
 }
 
 // CreateContest stores a contest and its linked problem IDs.
-func CreateContest(name, title, description, createdBy string, startAt, endAt time.Time, problemIDs []uint) (Contest, error) {
+func CreateContest(title, description, createdBy string, startAt, endAt time.Time, problemIDs []uint) (Contest, error) {
 	if db == nil {
 		return Contest{}, errors.New("db not initialized")
 	}
-	contest := Contest{Name: name, Title: title, Description: description, CreatedBy: createdBy, StartAt: startAt, EndAt: endAt}
+	contest := Contest{Title: title, Description: description, CreatedBy: createdBy, StartAt: startAt, EndAt: endAt}
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&contest).Error; err != nil {
 			return err

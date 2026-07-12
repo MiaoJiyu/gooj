@@ -23,7 +23,7 @@
           <a href="/manage" class="button primary">管理用户</a>
         </div>
         <table>
-          <thead><tr><th>ID</th><th>名称</th><th>标题</th><th>通过人数</th><th>我的最高分</th><th>操作</th></tr></thead>
+          <thead><tr><th>ID</th><th>标题</th><th>通过人数</th><th>我的最高分</th><th>操作</th></tr></thead>
           <tbody id="tbody"></tbody>
         </table>
         <div class="pager">
@@ -83,7 +83,6 @@
           const tr = document.createElement('tr')
           tr.innerHTML = `
             <td>${p.ID}</td>
-            <td>${p.Name}</td>
             <td>${p.Title||''}</td>
             <td>${p.passedCount}</td>
             <td>${p.userBestScore}</td>

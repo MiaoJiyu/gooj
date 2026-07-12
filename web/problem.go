@@ -3,10 +3,12 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -16,6 +18,18 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 )
+
+func parseProblemID(raw string) (uint, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, fmt.Errorf("missing problem id")
+	}
+	id, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil || id == 0 {
+		return 0, fmt.Errorf("invalid problem id %q", raw)
+	}
+	return uint(id), nil
+}
 
 // ProblemsHandler returns paginated problems. Query params: page (1-based), per (default 10)
 func ProblemsHandler(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +76,7 @@ func ProblemsHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// LastSubmissionHandler returns last submission and results for username & problem query params
+// LastSubmissionHandler returns the latest submission and test results for a user and numeric problem id.
 func LastSubmissionHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	user := q.Get("username")
@@ -72,7 +86,13 @@ func LastSubmissionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sub, results, err := sql_service.GetLastSubmission(user, prob)
+	problemID, err := parseProblemID(prob)
+	if err != nil {
+		http.Error(w, "invalid problem id", http.StatusBadRequest)
+		return
+	}
+
+	sub, results, err := sql_service.GetLastSubmission(user, strconv.FormatUint(uint64(problemID), 10))
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -82,16 +102,15 @@ func LastSubmissionHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"submission": sub, "results": results})
 }
 
-// ProblemDataHandler returns the statement.md and config.json for a given problem id or name
+// ProblemDataHandler returns the statement.md and config.json for a given problem id.
 func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id := vars["id"]
-	if id == "" {
-		http.Error(w, "missing id", http.StatusBadRequest)
+	problemID, err := parseProblemID(vars["id"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Try to parse as ID first, if fails search by name
 	var problem sql_service.Problem
 	db := sql_service.DB()
 	if db == nil {
@@ -99,26 +118,20 @@ func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// First try to find by ID
-	err := db.First(&problem, id).Error
-	if err != nil {
-		// If not found by ID, try to find by Name
-		err = db.Where("name = ?", id).First(&problem).Error
-		if err != nil {
-			http.Error(w, "problem not found", http.StatusNotFound)
-			return
-		}
+	if err := db.First(&problem, problemID).Error; err != nil {
+		http.Error(w, "problem not found", http.StatusNotFound)
+		return
 	}
 
 	currentUser := manage.CurrentUsername(r)
-	if problem.PublicTime != nil && problem.PublicTime.Before(time.Now()) && !manage.CheckUserPermission(currentUser, "EditPermission") {
+	if problem.PublicTime != nil && problem.PublicTime.After(time.Now()) && !manage.CheckUserPermission(currentUser, "EditPermission") {
 		http.Error(w, "problem is not public yet", http.StatusForbidden)
 		return
 	}
 
 	// Use the problem ID as directory name
-	problemID := strconv.FormatUint(uint64(problem.ID), 10)
-	base := filepath.Join("data", "problem", problemID)
+	problemDirID := strconv.FormatUint(uint64(problem.ID), 10)
+	base := filepath.Join("data", "problem", problemDirID)
 	stmtPath := filepath.Join(base, "statement.md")
 	cfgPath := filepath.Join(base, "config.json")
 	stmtBytes, err := os.ReadFile(stmtPath)
@@ -153,8 +166,8 @@ func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 		publicTime = problem.PublicTime.Format(time.RFC3339)
 	}
 	out := map[string]interface{}{
-		"id":             problem.ID,
-		"name":           problem.Name,
+		"id": problem.ID,
+		// "name":           problem.Name,
 		"title":          problem.Title,
 		"description":    problem.Description,
 		"time_limit_ms":  problem.TimeLimitMs,
@@ -172,9 +185,9 @@ func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 // UpdateProblemHandler handles updating problem metadata
 func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id := vars["id"]
-	if id == "" {
-		http.Error(w, "missing id", http.StatusBadRequest)
+	problemID, err := parseProblemID(vars["id"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -209,21 +222,15 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// First try to find by ID
-	err := db.First(&problem, id).Error
-	if err != nil {
-		// If not found by ID, try to find by Name
-		err = db.Where("name = ?", id).First(&problem).Error
-		if err != nil {
-			http.Error(w, "problem not found", http.StatusNotFound)
-			return
-		}
+	if err := db.First(&problem, problemID).Error; err != nil {
+		http.Error(w, "problem not found", http.StatusNotFound)
+		return
 	}
 
 	// Update problem fields if provided
-	if req.Name != "" {
-		problem.Name = req.Name
-	}
+	// if req.Name != "" {
+	// 	problem.Name = req.Name
+	// }
 	if req.Title != "" {
 		problem.Title = req.Title
 	}
@@ -290,8 +297,8 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "success",
 		"problem": map[string]interface{}{
-			"id":            problem.ID,
-			"name":          problem.Name,
+			"id": problem.ID,
+			// "name":          problem.Name,
 			"title":         problem.Title,
 			"description":   problem.Description,
 			"time_limit_ms": problem.TimeLimitMs,

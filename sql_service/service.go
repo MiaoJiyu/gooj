@@ -1,7 +1,6 @@
 package sql_service
 
 import (
-	"encoding/json"
 	"errors"
 	"math/rand"
 	"os"
@@ -270,51 +269,51 @@ func GetLastSubmission(username, problemID string) (Submission, []TestResult, er
 }
 
 // loadProblemsFromFile reads problem_list.json and inserts/updates Problem records
-func loadProblemsFromFile(path string) error {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	// expect array of either strings or objects
-	var raw []map[string]interface{}
-	if err := json.Unmarshal(b, &raw); err == nil {
-		for _, item := range raw {
-			name, _ := item["name"].(string)
-			if name == "" {
-				// maybe it's a single string in alternative format; skip
-				continue
-			}
-			title, _ := item["title"].(string)
-			desc, _ := item["description"].(string)
-			testsCount := 0
-			if v, ok := item["tests_count"].(float64); ok {
-				testsCount = int(v)
-			}
-			timeLimit := 0
-			if v, ok := item["time_limit_ms"].(float64); ok {
-				timeLimit = int(v)
-			}
-			memLimit := 0
-			if v, ok := item["mem_limit_mb"].(float64); ok {
-				memLimit = int(v)
-			}
-			p := Problem{Name: name, Title: title, Description: desc, TestsCount: testsCount, TimeLimitMs: timeLimit, MemLimitMB: memLimit}
-			// upsert
-			_ = db.Where(Problem{Name: name}).Assign(p).FirstOrCreate(&p).Error
-		}
-		return nil
-	}
-	// try simple string array
-	var arr []string
-	if err := json.Unmarshal(b, &arr); err == nil {
-		for _, name := range arr {
-			p := Problem{Name: name, Title: name}
-			_ = db.Where(Problem{Name: name}).FirstOrCreate(&p).Error
-		}
-		return nil
-	}
-	return nil
-}
+// func loadProblemsFromFile(path string) error {
+// 	b, err := os.ReadFile(path)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	// expect array of either strings or objects
+// 	var raw []map[string]interface{}
+// 	if err := json.Unmarshal(b, &raw); err == nil {
+// 		for _, item := range raw {
+// 			name, _ := item["name"].(string)
+// 			if name == "" {
+// 				// maybe it's a single string in alternative format; skip
+// 				continue
+// 			}
+// 			title, _ := item["title"].(string)
+// 			desc, _ := item["description"].(string)
+// 			testsCount := 0
+// 			if v, ok := item["tests_count"].(float64); ok {
+// 				testsCount = int(v)
+// 			}
+// 			timeLimit := 0
+// 			if v, ok := item["time_limit_ms"].(float64); ok {
+// 				timeLimit = int(v)
+// 			}
+// 			memLimit := 0
+// 			if v, ok := item["mem_limit_mb"].(float64); ok {
+// 				memLimit = int(v)
+// 			}
+// 			p := Problem{Title: title, Description: desc, TestsCount: testsCount, TimeLimitMs: timeLimit, MemLimitMB: memLimit}
+// 			// upsert
+// 			_ = db.Where(Problem{Name: name}).Assign(p).FirstOrCreate(&p).Error
+// 		}
+// 		return nil
+// 	}
+// 	// try simple string array
+// 	var arr []string
+// 	if err := json.Unmarshal(b, &arr); err == nil {
+// 		for _, name := range arr {
+// 			p := Problem{Name: name, Title: name}
+// 			_ = db.Where(Problem{Name: name}).FirstOrCreate(&p).Error
+// 		}
+// 		return nil
+// 	}
+// 	return nil
+// }
 
 // ListProblems returns problems for pagination (page 1-based)
 func ListProblems(page, perPage int) ([]Problem, int64, error) {

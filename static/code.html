@@ -56,16 +56,20 @@ int main(){
           if (!res.ok) return;
           const list = await res.json();
           const sel = document.getElementById('problemSelect');
-          // expecting list to be an array of problem names or objects
+          // The backend now exposes problem IDs as the stable selection key.
           if (Array.isArray(list)) {
             list.forEach(p => {
               const opt = document.createElement('option');
               if (typeof p === 'string') {
                 opt.value = p; opt.textContent = p;
-              } else if (p.name) {
-                opt.value = p.name; opt.textContent = p.name + (p.title?(' - '+p.title):'');
+              } else {
+                const problemID = p.ID || p.id || p.name || '';
+                if (problemID) {
+                  opt.value = String(problemID);
+                  opt.textContent = `${problemID}${p.Title || p.title ? ' - ' + (p.Title || p.title) : ''}`;
+                }
               }
-              sel.appendChild(opt);
+              if (opt.value) sel.appendChild(opt);
             });
           }
         } catch (e) { console.error(e); }

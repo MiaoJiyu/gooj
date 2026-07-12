@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 	"github.com/minicago/gooj/sql_service"
@@ -13,24 +14,13 @@ func CodeFileHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	user := vars["user"]
 	problem := vars["problem"]
-	// Resolve problem ID or Name to actual problem name for consistency
-	problemName := problem
-	db := sql_service.DB()
-	if db != nil {
-		// Try to find problem by ID
-		var prob sql_service.Problem
-		if err := db.First(&prob, problem).Error; err == nil {
-			// Found by ID, use the Name
-			problemName = prob.Name
-		} else {
-			// Try to find by Name
-			if err := db.Where("name = ?", problem).First(&prob).Error; err == nil {
-				problemName = prob.Name
-			}
-		}
+	problemID, err := parseProblemID(problem)
+	if err != nil {
+		http.Error(w, "invalid problem id", http.StatusBadRequest)
+		return
 	}
 	// fetch last submission from DB
-	sub, results, err := sql_service.GetLastSubmission(user, problemName)
+	sub, results, err := sql_service.GetLastSubmission(user, strconv.FormatUint(uint64(problemID), 10))
 	if err != nil {
 		http.Error(w, "no submission", http.StatusNotFound)
 		return

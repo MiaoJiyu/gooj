@@ -24,8 +24,8 @@ func ListContestsHandler(w http.ResponseWriter, r *http.Request) {
 			problems = []sql_service.Problem{}
 		}
 		contestInfo := map[string]interface{}{
-			"id":          contest.ID,
-			"name":        contest.Name,
+			"id": contest.ID,
+			// "name":        contest.Name,
 			"title":       contest.Title,
 			"description": contest.Description,
 			"start_at":    contest.StartAt,
@@ -67,8 +67,8 @@ func ContestDetailHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":          contest.ID,
-		"name":        contest.Name,
+		"id": contest.ID,
+		// "name":        contest.Name,
 		"title":       contest.Title,
 		"description": contest.Description,
 		"start_at":    contest.StartAt,

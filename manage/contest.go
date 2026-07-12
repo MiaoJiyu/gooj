@@ -51,7 +51,7 @@ func CreateContestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contest, err := sql_service.CreateContest(strings.TrimSpace(req.Name), strings.TrimSpace(req.Title), strings.TrimSpace(req.Description), currentUser, startAt, endAt, req.ProblemIDs)
+	contest, err := sql_service.CreateContest(strings.TrimSpace(req.Title), strings.TrimSpace(req.Description), currentUser, startAt, endAt, req.ProblemIDs)
 	if err != nil {
 		http.Error(w, "create contest failed", http.StatusInternalServerError)
 		return

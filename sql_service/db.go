@@ -2,7 +2,6 @@ package sql_service
 
 import (
 	"fmt"
-	"os"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/sqlite"
@@ -54,9 +53,9 @@ func Init() error {
 	}
 
 	// Load problems from file if it exists
-	if _, err := os.Stat("data/problem_list.json"); err == nil {
-		_ = loadProblemsFromFile("data/problem_list.json")
-	}
+	// if _, err := os.Stat("data/problem_list.json"); err == nil {
+	// 	_ = loadProblemsFromFile("data/problem_list.json")
+	// }
 
 	return nil
 }

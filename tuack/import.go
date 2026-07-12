@@ -127,7 +127,7 @@ func ImportTuackPackage(zipPath, name, title string) (*ImportResult, error) {
 
 	// 7. Create problem in database
 	problem := sql_service.Problem{
-		Name:        name,
+		// Name:        name,
 		Title:       title,
 		Description: statement,
 		TestsCount:  testCount,
@@ -195,9 +195,9 @@ func ImportTuackPackage(zipPath, name, title string) (*ImportResult, error) {
 
 	return &ImportResult{
 		ProblemID: problem.ID,
-		Name:      problem.Name,
-		Title:     problem.Title,
-		Message:   "Problem imported successfully",
+		// Name:      problem.Name,
+		Title:   problem.Title,
+		Message: "Problem imported successfully",
 	}, nil
 }
 
@@ -349,9 +349,9 @@ func UpdateTuackPackage(zipPath string, problemID uint) (*ImportResult, error) {
 
 	return &ImportResult{
 		ProblemID: problem.ID,
-		Name:      problem.Name,
-		Title:     problem.Title,
-		Message:   "Problem updated successfully",
+		// Name:      problem.Name,
+		Title:   problem.Title,
+		Message: "Problem updated successfully",
 	}, nil
 }
 
