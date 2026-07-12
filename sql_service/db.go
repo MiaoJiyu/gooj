@@ -49,7 +49,7 @@ func Init() error {
 	db.Logger = logger.Default.LogMode(logger.Silent)
 
 	// Migrate the schema
-	if err := db.AutoMigrate(&User{}, &Group{}, &Submission{}, &TestResult{}, &Problem{}); err != nil {
+	if err := db.AutoMigrate(&User{}, &Group{}, &Submission{}, &TestResult{}, &Problem{}, &Contest{}, &ContestProblem{}); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 

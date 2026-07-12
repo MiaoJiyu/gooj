@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>比赛 - Gooj</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav>
+        <a href="/problemlist">题目列表</a>
+        <a href="/user_profile">用户信息</a>
+        <a href="/contest">比赛</a>
+        <a href="/submissions">提交记录</a>
+      </nav>
+      <h1>比赛界面</h1>
+      <div class="card">
+        <h2>比赛列表</h2>
+        <div id="contestList">加载中...</div>
+      </div>
+    </div>
+    <script>
+      async function loadContests() {
+        const res = await fetch('/api/contests');
+        const data = await res.json();
+        const contests = data.contests || [];
+        const container = document.getElementById('contestList');
+        if (!contests.length) {
+          container.innerHTML = '<p>暂无比赛</p>';
+          return;
+        }
+
+        container.innerHTML = contests.map(contest => {
+          const problems = (contest.problems || []).map(problem => {
+            return `<a href="/problem?id=${encodeURIComponent(problem.ID || problem.id || '')}">${problem.Title || problem.Name || '题目'}</a>`;
+          }).join(' · ');
+          const start = new Date(contest.start_at).toLocaleString();
+          const end = new Date(contest.end_at).toLocaleString();
+          return `
+            <div class="card" style="margin-top: 12px;">
+              <h3>${contest.title || contest.name}</h3>
+              <p>${contest.description || ''}</p>
+              <p>开始时间：${start} ｜ 结束时间：${end}</p>
+              <p>比赛题目：${problems || '暂无题目'}</p>
+              <p><a href="/contest/${contest.id}/leaderboard" class="button secondary">查看排行榜</a></p>
+            </div>
+          `;
+        }).join('');
+      }
+
+      loadContests();
+    </script>
+  </body>
+</html>

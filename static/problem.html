@@ -12,23 +12,34 @@
     <div class="container">
       <nav>
         <a href="/problemlist">题目列表</a>
-        <a href="/submit">提交页面</a>
-        <a href="/postboard">公告板</a>
-        <a href="/">返回首页</a>
+        <a href="/user_profile">用户信息</a>
+        <a href="/contest">比赛</a>
+        <a href="/submissions">提交记录</a>
       </nav>
-      <h1 id="title">题目</h1>
+      <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
+        <h1 id="title" style="margin-bottom: 0;">题目</h1>
+        <a id="toSubmit" href="#" class="button primary">提交</a>
+        <a id="toSubmissions" href="#" class="button secondary">本题提交记录</a>
+      </div>
       <div id="limits"></div>
       <div class="card">
         <h2>题面</h2>
         <div id="statement"></div>
       </div>
       <div class="actions">
-        <a id="toSubmit" href="#" class="button primary">去提交此题</a>
         <span id="editOption" style="display:none">
           <a href="#" id="editProblem" class="button secondary">编辑题目</a>
         </span>
       </div>
     </div>
+    <script>
+      // ...existing code...
+      // 增加“本题提交记录”按钮跳转
+      document.addEventListener('DOMContentLoaded', function() {
+        const id = (new URL(location.href)).searchParams.get('id') || '1';
+        document.getElementById('toSubmissions').href = '/submissions?problem=' + encodeURIComponent(id);
+      });
+    </script>
 
     <!-- KaTeX JS for LaTeX rendering - load before custom script -->
     <script src="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/katex.min.js" crossorigin="anonymous"></script>

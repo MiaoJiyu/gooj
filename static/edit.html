@@ -166,6 +166,10 @@
               <input type="number" id="infoMemLimit" placeholder="MB" />
             </div>
             <div class="info-item">
+              <label>公开时间</label>
+              <input type="datetime-local" id="infoPublicTime" placeholder="选择公开时间" />
+            </div>
+            <div class="info-item">
               <label>测试点数量</label>
               <input type="number" id="infoTestsCount" readonly />
             </div>
@@ -265,6 +269,7 @@
           document.getElementById('infoTitle').value = data.title || '';
           document.getElementById('infoTimeLimit').value = data.time_limit_ms || '';
           document.getElementById('infoMemLimit').value = data.mem_limit_mb || '';
+          document.getElementById('infoPublicTime').value = data.public_time ? data.public_time.slice(0, 16) : '';
           document.getElementById('infoTestsCount').value = data.tests_count || '';
           document.getElementById('markdownEditor').value = data.statement || '';
           
@@ -324,12 +329,14 @@
         const problemID = document.getElementById('problemID').value.trim();
         if (!problemID) return alert('请先加载题目');
         
+        const publicTimeValue = document.getElementById('infoPublicTime').value.trim();
         const updateData = {
           name: document.getElementById('infoName').value.trim(),
           title: document.getElementById('infoTitle').value.trim(),
           description: document.getElementById('markdownEditor').value,
           time_limit_ms: parseInt(document.getElementById('infoTimeLimit').value) || 0,
-          mem_limit_mb: parseInt(document.getElementById('infoMemLimit').value) || 0
+          mem_limit_mb: parseInt(document.getElementById('infoMemLimit').value) || 0,
+          public_time: publicTimeValue ? new Date(publicTimeValue).toISOString() : ''
         };
         
         if (!updateData.name || !updateData.title) {

@@ -10,6 +10,7 @@ type User struct {
 	Role       string `gorm:"size:32;default:'user'"`                // user, admin, teacher
 	Group      Group  `gorm:"foreignKey:Name;references:GroupName;"` // User group
 	GroupName  string
+	Rating     int `gorm:"default:1500"` // User rating, default 1500
 	CreatedAt  time.Time
 	CreatedBy  string     `gorm:"size:128"`      // Username of the creator
 	Approved   bool       `gorm:"default:false"` // Whether the user is approved by creator
@@ -70,4 +71,25 @@ type Problem struct {
 	TestsCount  int
 	TimeLimitMs int
 	MemLimitMB  int
+	PublicTime  *time.Time `gorm:"index"`
+}
+
+// Contest represents a contest with an associated problem set and a leaderboard.
+type Contest struct {
+	ID          uint      `gorm:"primaryKey"`
+	Name        string    `gorm:"uniqueIndex;size:128"`
+	Title       string    `gorm:"size:256"`
+	Description string    `gorm:"type:text"`
+	StartAt     time.Time `gorm:"index"`
+	EndAt       time.Time `gorm:"index"`
+	CreatedBy   string    `gorm:"size:128"`
+	CreatedAt   time.Time
+}
+
+// ContestProblem links a contest to a problem.
+type ContestProblem struct {
+	ID        uint `gorm:"primaryKey"`
+	ContestID uint `gorm:"index"`
+	ProblemID uint `gorm:"index"`
+	CreatedAt time.Time
 }

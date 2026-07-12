@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>比赛排行榜 - Gooj</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav>
+        <a href="/problemlist">题目列表</a>
+        <a href="/user_profile">用户信息</a>
+        <a href="/contest">比赛</a>
+        <a href="/submissions">提交记录</a>
+      </nav>
+      <h1>比赛排行榜</h1>
+      <div class="card">
+        <h2 id="contestName">加载中...</h2>
+        <table>
+          <thead>
+            <tr><th>排名</th><th>用户名</th><th>总分</th><th>解题数</th></tr>
+          </thead>
+          <tbody id="leaderboardBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <script>
+      const contestId = new URL(location.href).pathname.split('/')[2];
+      async function load() {
+        const res = await fetch('/api/contest/' + encodeURIComponent(contestId) + '/leaderboard');
+        const data = await res.json();
+        document.getElementById('contestName').textContent = '比赛 #' + contestId;
+        const rows = data.rows || [];
+        const body = document.getElementById('leaderboardBody');
+        body.innerHTML = '';
+        rows.forEach((row, idx) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${idx + 1}</td><td>${row.username}</td><td>${row.score}</td><td>${row.solved}</td>`;
+          body.appendChild(tr);
+        });
+      }
+      load();
+    </script>
+  </body>
+</html>

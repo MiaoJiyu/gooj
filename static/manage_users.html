@@ -15,6 +15,15 @@
         <a href="/">返回首页</a>
       </nav>
       <h1>用户管理</h1>
+
+      <div class="card">
+        <h2>批量导入用户</h2>
+        <div class="form-group">
+          <label>CSV 文件（表头：username,group,password）</label>
+          <input type="file" id="csvImportFile" accept=".csv" />
+          <button id="importCsvBtn" class="success" style="margin-top:10px">导入</button>
+        </div>
+      </div>
       
       <div class="card">
         <h2>待审核用户</h2>
@@ -134,6 +143,24 @@
         renderUsers(pendingUsers, 'pendingUsers');
         renderUsers(approvedUsers, 'approvedUsers', false);
       }
+
+      document.getElementById('importCsvBtn').addEventListener('click', async () => {
+        const fileInput = document.getElementById('csvImportFile');
+        if (!fileInput.files.length) {
+          return alert('请选择 CSV 文件');
+        }
+        const form = new FormData();
+        form.append('csv', fileInput.files[0]);
+        try {
+          const res = await fetch('/api/import_users_csv', { method: 'POST', body: form });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          alert(`已导入 ${data.imported} 个用户`);
+          loadUsers();
+        } catch (e) {
+          alert('导入失败: ' + e.message);
+        }
+      });
 
       // 页面加载时获取数据
       document.addEventListener('DOMContentLoaded', function() {

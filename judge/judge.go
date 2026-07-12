@@ -380,9 +380,9 @@ func processJob(sub sql_service.Submission) {
 				timeLimit = v
 			}
 			// memory: accept mem_mb or mem_limit_mb
-			if v, ok := obj["mem_mb"].(float64); ok {
+			if v, ok := obj["memory_limit"].(float64); ok {
 				memMB = int(v)
-			} else if v, ok := obj["mem_limit_mb"].(float64); ok {
+			} else if v, ok := obj["memory_limit_mb"].(float64); ok {
 				memMB = int(v)
 			}
 		}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -31,11 +32,31 @@ func ProblemsHandler(w http.ResponseWriter, r *http.Request) {
 			per = v
 		}
 	}
-	probs, total, err := sql_service.ListProblems(page, per)
-	if err != nil {
+
+	currentUser := manage.CurrentUsername(r)
+	canEdit := manage.CheckUserPermission(currentUser, "EditPermission")
+	now := time.Now()
+	db := sql_service.DB()
+	if db == nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+
+	query := db.Model(&sql_service.Problem{})
+	if !canEdit {
+		query = query.Where("public_time IS NULL OR public_time <= ?", now)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+
+	var probs []sql_service.Problem
+	offset := (page - 1) * per
+	query.Order("id asc").Offset(offset).Limit(per).Find(&probs)
+
 	out := map[string]interface{}{"problems": probs, "total": total, "page": page, "per": per}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
@@ -89,6 +110,12 @@ func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	currentUser := manage.CurrentUsername(r)
+	if problem.PublicTime != nil && problem.PublicTime.Before(time.Now()) && !manage.CheckUserPermission(currentUser, "EditPermission") {
+		http.Error(w, "problem is not public yet", http.StatusForbidden)
+		return
+	}
+
 	// Use the problem ID as directory name
 	problemID := strconv.FormatUint(uint64(problem.ID), 10)
 	base := filepath.Join("data", "problem", problemID)
@@ -121,6 +148,10 @@ func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 		),
 	)
 	_ = md.Convert(stmtBytes, &buf)
+	publicTime := ""
+	if problem.PublicTime != nil {
+		publicTime = problem.PublicTime.Format(time.RFC3339)
+	}
 	out := map[string]interface{}{
 		"id":             problem.ID,
 		"name":           problem.Name,
@@ -129,6 +160,7 @@ func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 		"time_limit_ms":  problem.TimeLimitMs,
 		"mem_limit_mb":   problem.MemLimitMB,
 		"tests_count":    problem.TestsCount,
+		"public_time":    publicTime,
 		"statement":      string(stmtBytes),
 		"statement_html": buf.String(),
 		"config":         cfg,
@@ -160,6 +192,7 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 		Description string `json:"description"`
 		TimeLimitMs int    `json:"time_limit_ms"`
 		MemLimitMB  int    `json:"mem_limit_mb"`
+		PublicTime  string `json:"public_time"`
 	}
 
 	var req UpdateRequest
@@ -203,6 +236,14 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 	if req.MemLimitMB > 0 {
 		problem.MemLimitMB = req.MemLimitMB
 	}
+	if req.PublicTime != "" {
+		parsedPublicTime, err := time.Parse(time.RFC3339, req.PublicTime)
+		if err != nil {
+			http.Error(w, "invalid public_time", http.StatusBadRequest)
+			return
+		}
+		problem.PublicTime = &parsedPublicTime
+	}
 
 	// Save to database
 	if err := db.Save(&problem).Error; err != nil {
@@ -242,6 +283,10 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	publicTime := ""
+	if problem.PublicTime != nil {
+		publicTime = problem.PublicTime.Format(time.RFC3339)
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "success",
 		"problem": map[string]interface{}{
@@ -252,6 +297,7 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 			"time_limit_ms": problem.TimeLimitMs,
 			"mem_limit_mb":  problem.MemLimitMB,
 			"tests_count":   problem.TestsCount,
+			"public_time":   publicTime,
 		},
 	})
 }

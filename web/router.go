@@ -38,6 +38,12 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/problemlist", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/problemlist.html")
 	}).Methods("GET")
+	r.HandleFunc("/contest", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/contest.html")
+	}).Methods("GET")
+	r.HandleFunc("/contest/{id}/leaderboard", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/contest_leaderboard.html")
+	}).Methods("GET")
 	r.HandleFunc("/manage", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/manage.html")
 	}).Methods("GET")
@@ -66,6 +72,12 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/api/problem/{id}", ProblemDataHandler).Methods("GET")
 	// API to update problem metadata
 	r.HandleFunc("/api/problem/{id}/update", UpdateProblemHandler).Methods("POST")
+	r.HandleFunc("/api/contests", ListContestsHandler).Methods("GET")
+	r.HandleFunc("/api/contest/{id}", ContestDetailHandler).Methods("GET")
+	r.HandleFunc("/api/contest/{id}/leaderboard", ContestLeaderboardHandler).Methods("GET")
+	r.HandleFunc("/api/create_contest", manage.CreateContestHandler).Methods("POST")
+	r.HandleFunc("/api/delete_contest", manage.DeleteContestHandler).Methods("POST")
+	r.HandleFunc("/api/import_users_csv", manage.ImportUsersCSVHandler).Methods("POST")
 	r.HandleFunc("/problems", ProblemsHandler).Methods("GET")
 	r.HandleFunc("/register", RegisterHandler).Methods("POST")
 	r.HandleFunc("/login", LoginHandler).Methods("POST")
@@ -107,6 +119,18 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/api/submissions", GetSubmissionsHandler).Methods("GET")
 	r.HandleFunc("/api/submission/{id}", GetSubmissionHandler).Methods("GET")
 	r.HandleFunc("/api/problem_stats", GetProblemStatsHandler).Methods("GET")
+
+	// User profile endpoints
+	r.HandleFunc("/user/{username}", UserProfileHandler).Methods("GET")
+	r.HandleFunc("/api/user/{username}", GetUserProfileHandler).Methods("GET")
+	r.HandleFunc("/api/user/{username}/rating", UpdateUserRatingHandler).Methods("POST")
+	r.HandleFunc("/api/user/{username}/submissions", GetUserSubmissionsHandler).Methods("GET")
+	r.HandleFunc("/api/user/{username}/solved", GetUserSolvedProblemsHandler).Methods("GET")
+
+	// Redirect /user_profile to the current user's profile page
+	r.HandleFunc("/user_profile", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/user/"+manage.CurrentUsername(r), http.StatusFound)
+	}).Methods("GET")
 
 	// static files under /static/
 	fs := http.FileServer(http.Dir("static/"))

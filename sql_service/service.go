@@ -49,9 +49,8 @@ func CreateUserWithGroup(username, password, group, createdBy string) error {
 	if err != nil {
 		return err
 	}
-	// var groupData Group
-	// db.Where(&Group{Name: group}).First(&groupData)
-	u := User{Username: username, Password: string(hashed), GroupName: group, CreatedBy: createdBy}
+	approvedAt := time.Now()
+	u := User{Username: username, Password: string(hashed), GroupName: group, CreatedBy: createdBy, Approved: true, ApprovedAt: &approvedAt, ApprovedBy: createdBy}
 	return db.Create(&u).Error
 }
 

@@ -7,25 +7,31 @@
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
-    <div class="problem-list-container">
-      <h1>题目列表</h1>
-      <div class="user-info">
-        <div>已登录: <span id="who" style="font-weight: 600;"></span></div>
-        <button id="logout" class="danger small">登出</button>
+      <div class="problem-list-container">
+        <nav>
+          <a href="/problemlist">题目列表</a>
+          <a href="/user_profile">用户信息</a>
+          <a href="/contest">比赛</a>
+          <a href="/submissions">提交记录</a>
+        </nav>
+        <h1>题目列表</h1>
+        <div class="user-info">
+          <div>已登录: <span id="who" style="font-weight: 600;"></span></div>
+          <button id="logout" class="danger small">登出</button>
+        </div>
+        <div id="manageUsersOption" style="display:none;margin-bottom:16px">
+          <a href="/manage" class="button primary">管理用户</a>
+        </div>
+        <table>
+          <thead><tr><th>ID</th><th>名称</th><th>标题</th><th>通过人数</th><th>我的最高分</th><th>操作</th></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="pager">
+          <button id="prev" class="secondary">上一页</button>
+          <span id="pageInfo"></span>
+          <button id="next" class="secondary">下一页</button>
+        </div>
       </div>
-      <div id="manageUsersOption" style="display:none;margin-bottom:16px">
-        <a href="/manage" class="button primary">管理用户</a>
-      </div>
-      <table>
-        <thead><tr><th>ID</th><th>名称</th><th>标题</th><th>通过人数</th><th>我的最高分</th><th>操作</th></tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-      <div class="pager">
-        <button id="prev" class="secondary">上一页</button>
-        <span id="pageInfo"></span>
-        <button id="next" class="secondary">下一页</button>
-      </div>
-    </div>
 
     <script>
       const per = 10

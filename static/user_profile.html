@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户主页</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .profile-header {
+            display: flex;
+            align-items: center;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        .avatar {
+            width: 80px;
+            height: 80px;
+            background: #4CAF50;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            margin-right: 20px;
+        }
+        .user-info h1 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .user-meta {
+            display: flex;
+            gap: 20px;
+            color: #666;
+        }
+        .rating {
+            font-size: 24px;
+            color: #ff9800;
+            font-weight: bold;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        .section h2 {
+            color: #333;
+            border-left: 4px solid #4CAF50;
+            padding-left: 10px;
+            margin-bottom: 15px;
+        }
+        .group-info {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .problem-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .problem-tag {
+            background: #e8f5e9;
+            color: #4CAF50;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            text-decoration: none;
+            transition: background 0.3s;
+        }
+        .problem-tag:hover {
+            background: #c8e6c9;
+        }
+        .no-data {
+            color: #999;
+            font-style: italic;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+        <div class="container">
+            <nav>
+                <a href="/problemlist">题目列表</a>
+                <a href="/user_profile">用户信息</a>
+                <a href="/contest">比赛</a>
+                <a href="/submissions">提交记录</a>
+            </nav>
+        <div class="profile-header">
+            <div class="avatar" id="avatar">?</div>
+            <div class="user-info">
+                <h1 id="username">加载中...</h1>
+                <div class="user-meta">
+                    <span id="group">用户组: ...</span>
+                    <span id="role">角色: ...</span>
+                    <span class="rating" id="rating">Rating: ...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="solved-count">0</div>
+                <div class="stat-label">通过题目</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="total-sub">0</div>
+                <div class="stat-label">总提交</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="ac-sub">0</div>
+                <div class="stat-label">通过提交</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="ac-rate">0%</div>
+                <div class="stat-label">通过率</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>用户组信息</h2>
+            <div class="group-info" id="group-info">
+                <p>用户组: <span id="group-name">-</span></p>
+                <p>注册时间: <span id="created-at">-</span></p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>通过的题目</h2>
+            <div class="problem-list" id="solved-problems">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get username from URL path
+        const pathParts = window.location.pathname.split('/');
+        const username = pathParts[pathParts.length - 1] || 'Unknown';
+
+        // Update avatar with first letter
+        document.getElementById('avatar').textContent = username.charAt(0).toUpperCase();
+
+        // Fetch user profile data
+        fetch(`/api/user/${username}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('User not found');
+                }
+                return response.json();
+            })
+            .then(data => {
+                document.getElementById('username').textContent = data.username;
+                document.getElementById('group').textContent = '用户组: ' + (data.group_name || '无');
+                document.getElementById('role').textContent = '角色: ' + (data.role || 'user');
+                document.getElementById('rating').textContent = 'Rating: ' + (data.rating || 1500);
+                document.getElementById('solved-count').textContent = data.solved_count;
+                document.getElementById('total-sub').textContent = data.total_submissions;
+                document.getElementById('ac-sub').textContent = data.accepted_submissions;
+                document.getElementById('group-name').textContent = data.group_name || '无';
+                document.getElementById('created-at').textContent = data.created_at;
+
+                // Calculate AC rate
+                const rate = data.total_submissions > 0 
+                    ? ((data.accepted_submissions / data.total_submissions) * 100).toFixed(1) 
+                    : 0;
+                document.getElementById('ac-rate').textContent = rate + '%';
+
+                // Load solved problems
+                loadSolvedProblems(username);
+            })
+            .catch(error => {
+                document.getElementById('username').textContent = '用户不存在';
+                console.error('Error:', error);
+            });
+
+        function loadSolvedProblems(username) {
+            fetch(`/api/user/${username}/solved`)
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('solved-problems');
+                    if (data.solved_ids && data.solved_ids.length > 0) {
+                        container.innerHTML = data.solved_ids.map(id => 
+                            `<a href="/problem?id=${id}" class="problem-tag">${id}</a>`
+                        ).join('');
+                    } else {
+                        container.innerHTML = '<p class="no-data">暂无通过题目</p>';
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('solved-problems').innerHTML = 
+                        '<p class="no-data">加载失败</p>';
+                });
+        }
+    </script>
+</body>
+</html>
