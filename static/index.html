@@ -5,25 +5,97 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>登录 - Gooj</title>
     <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/common.js"></script>
+    <style>
+      .login-wrapper {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .login-card {
+        background: white;
+        border-radius: var(--radius-lg);
+        padding: 40px;
+        box-shadow: var(--shadow-xl);
+        width: 100%;
+        max-width: 420px;
+      }
+      .login-logo {
+        text-align: center;
+        margin-bottom: 32px;
+      }
+      .login-logo .logo {
+        width: 72px;
+        height: 72px;
+        background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+        border-radius: var(--radius-lg);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        margin-bottom: 12px;
+      }
+      .login-logo h1 {
+        font-size: 28px;
+        margin: 0;
+        background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .login-logo p {
+        color: var(--text-secondary);
+        margin: 8px 0 0;
+      }
+      .login-nav {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+      .login-nav a {
+        color: var(--text-secondary);
+        text-decoration: none;
+        padding: 8px 16px;
+        border-radius: var(--radius-sm);
+        transition: all 0.2s;
+        font-size: 14px;
+      }
+      .login-nav a:hover {
+        color: var(--primary-color);
+        background: var(--bg-secondary);
+      }
+    </style>
   </head>
   <body>
-    <div class="login-container">
-      <h1>欢迎</h1>
-      <nav>
-        <a href="/problemlist">题目列表</a>
-        <a href="/submit">提交页面</a>
-        <a href="/postboard">公告板</a>
-        <a href="/register">用户注册</a>
-      </nav>
-      <div class="card">
-        <h2>登录</h2>
-        <form id="loginForm" class="form-group">
-          <label>用户名</label>
-          <input id="loginUser" type="text" placeholder="请输入用户名" />
-          <label style="margin-top: 16px">密码</label>
-          <input id="loginPass" type="password" placeholder="请输入密码" />
-          <button id="loginBtn" style="margin-top: 24px; width: 100%">登录</button>
-        </form>
+    <div class="login-wrapper">
+      <div class="login-card">
+        <div class="login-logo">
+          <div class="logo"></div>
+          <h1>欢迎使用 Gooj</h1>
+          <p>在线评测系统</p>
+        </div>
+        
+        <nav class="login-nav">
+          <a href="/problemlist"> 题目列表</a>
+          <a href="/contest"> 比赛</a>
+          <a href="/ranking"> 排行榜</a>
+          <a href="/register"> 注册账号</a>
+        </nav>
+        
+        <div class="card">
+          <h2> 登录账号</h2>
+          <form id="loginForm" class="form-group">
+            <label>用户名</label>
+            <input id="loginUser" type="text" placeholder="请输入用户名" />
+            <label style="margin-top: 16px">密码</label>
+            <input id="loginPass" type="password" placeholder="请输入密码" />
+            <button id="loginBtn" style="margin-top: 24px; width: 100%" type="button">登录</button>
+          </form>
+        </div>
       </div>
     </div>
 
@@ -33,55 +105,47 @@
         if (!res.ok) throw new Error(await res.text());
         return await res.json();
       }
-      // auto-redirect if we have a recent login (within 5 minutes)
 
       (function(){
-
         function getTokenFromCookie() {
           const match = document.cookie.match(new RegExp('(^| )token=([^;]+)'));
           if (match) return match[2];
           return null;
         }
-
-        const user = localStorage.getItem('username');
-        const ts = parseInt(localStorage.getItem('login_ts') || '0', 10);
         const token = getTokenFromCookie() || "";
         if (token != "") {
-          // still valid
           location.href = '/problemlist';
         }
       })();
 
-      document.getElementById('loginBtn').addEventListener('click', async ()=>{
+      document.getElementById('loginBtn').addEventListener('click', async () => {
         const btn = document.getElementById('loginBtn');
         btn.disabled = true;
         btn.textContent = '登录中...';
 
-        try{
-          const user=document.getElementById('loginUser').value.trim();
-          const pass=document.getElementById('loginPass').value;
-          if(!user||!pass) {
+        try {
+          const user = document.getElementById('loginUser').value.trim();
+          const pass = document.getElementById('loginPass').value;
+          if (!user || !pass) {
             alert('请输入用户名和密码');
             btn.disabled = false;
             btn.textContent = '登录';
             return;
           }
-          const res = await postJSON('/login',{username:user,password:pass});
-          // store username locally and go to problem list; save timestamp for 5min remember
+          const res = await postJSON('/login', {username: user, password: pass});
           localStorage.setItem('username', user);
           localStorage.setItem('login_ts', String(Date.now()));
           if (res && res.token) {
             localStorage.setItem('auth_token', res.token);
           }
-          // 登录成功，跳转到题目列表
-          location.href='/problemlist';
-        }catch(e){
+          location.href = '/problemlist';
+        } catch (e) {
           let errorMsg = '登录失败';
-          if(e.message.includes('invalid credentials')) {
+          if (e.message.includes('invalid credentials')) {
             errorMsg = '用户名或密码错误';
-          } else if(e.message.includes('missing fields')) {
+          } else if (e.message.includes('missing fields')) {
             errorMsg = '请填写完整的登录信息';
-          } else if(e.message.includes('internal error')) {
+          } else if (e.message.includes('internal error')) {
             errorMsg = '服务器内部错误，请稍后重试';
           } else {
             errorMsg = '登录失败: ' + e.message;

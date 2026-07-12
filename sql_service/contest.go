@@ -71,6 +71,17 @@ func DeleteContest(id uint) error {
 	if db == nil {
 		return errors.New("db not initialized")
 	}
+	// First delete associated records from the many-to-many join table
+	if err := db.Exec("DELETE FROM contest_problems WHERE contest_id = ?", id).Error; err != nil {
+		return err
+	}
+	if err := db.Exec("DELETE FROM contest_groups WHERE contest_id = ?", id).Error; err != nil {
+		return err
+	}
+	// Also delete any rating history for this contest
+	if err := db.Exec("DELETE FROM contest_rating_histories WHERE contest_id = ?", id).Error; err != nil {
+		return err
+	}
 	return db.Delete(&Contest{}, id).Error
 }
 
@@ -107,35 +118,39 @@ func GetContestLeaderboard(contestID uint) ([]ContestRankingRow, error) {
 	}
 
 	var submissions []Submission
+	// Order by created_at desc to get the most recent submission first for each user+problem
 	if err := db.Where("problem_id IN ?", problemIDs).
 		Where("created_at >= ? AND created_at <= ?", contest.StartAt, contest.EndAt).
-		Where("status IN ?", []string{"ok", "accepted", "wa", "tle", "mle", "runtime_error", "compile_error"}).
-		Order("username asc, problem_id asc, score desc, created_at desc").
+		Order("username asc, problem_id asc, created_at desc").
 		Find(&submissions).Error; err != nil {
 		return nil, err
 	}
 
-	bestScoreByUserProblem := make(map[string]map[uint]int)
+	// For each user+problem, keep only the most recent submission's score
+	lastSubmissionByUserProblem := make(map[string]map[uint]Submission)
 	for _, submission := range submissions {
 		if submission.Username == "" {
 			continue
 		}
-		if _, ok := bestScoreByUserProblem[submission.Username]; !ok {
-			bestScoreByUserProblem[submission.Username] = make(map[uint]int)
+		if _, ok := lastSubmissionByUserProblem[submission.Username]; !ok {
+			lastSubmissionByUserProblem[submission.Username] = make(map[uint]Submission)
 		}
-		currentBest, exists := bestScoreByUserProblem[submission.Username][submission.ProblemID]
-		if !exists || submission.Score > currentBest {
-			bestScoreByUserProblem[submission.Username][submission.ProblemID] = submission.Score
+		// Since we order by created_at desc, the first one we see for each user+problem is the latest
+		if _, exists := lastSubmissionByUserProblem[submission.Username][submission.ProblemID]; !exists {
+			lastSubmissionByUserProblem[submission.Username][submission.ProblemID] = submission
 		}
 	}
 
 	leaderboard := make(map[string]*ContestRankingRow)
-	for username, problemScore := range bestScoreByUserProblem {
-		row := &ContestRankingRow{Username: username}
-		for _, score := range problemScore {
-			row.Total += score
+	for username, problemSubmissions := range lastSubmissionByUserProblem {
+		row := &ContestRankingRow{
+			Username: username,
+			Scores:   make(map[uint]int),
 		}
-		row.Scores = problemScore
+		for problemID, submission := range problemSubmissions {
+			row.Scores[problemID] = submission.Score
+			row.Total += submission.Score
+		}
 		leaderboard[username] = row
 	}
 

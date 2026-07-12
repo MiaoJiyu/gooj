@@ -70,6 +70,10 @@
             <label>结束时间</label>
             <input id="contestEndAt" type="datetime-local" />
           </div>
+          <div class="form-group">
+            <label>允许参赛的用户组（逗号分隔，留空则公开）</label>
+            <input id="contestGroups" type="text" placeholder="例如：新生组, 高级组" />
+          </div>
           <div class="form-group full-width">
             <label>比赛说明</label>
             <textarea id="contestDescription" rows="4" placeholder="输入比赛说明"></textarea>
@@ -160,6 +164,7 @@
         const description = document.getElementById('contestDescription').value.trim();
         const startAt = document.getElementById('contestStartAt').value;
         const endAt = document.getElementById('contestEndAt').value;
+        const groupsRaw = document.getElementById('contestGroups').value.trim();
         const problemIDs = document.getElementById('contestProblemIDs').value.trim();
 
         if (!title || !startAt || !endAt) {
@@ -167,14 +172,17 @@
         }
 
         const ids = problemIDs ? problemIDs.split(',').map(v => Number(v.trim())).filter(Boolean) : [];
+        const groups = groupsRaw
+          ? groupsRaw.split(',').map(g => g.trim()).filter(Boolean)
+          : [];
 
         try {
           await postJSON('/api/create_contest', {
-            name: title,
             title,
             description,
             start_at: new Date(startAt).toISOString(),
             end_at: new Date(endAt).toISOString(),
+            groups,
             problem_ids: ids
           });
           alert('比赛创建成功');
@@ -182,6 +190,7 @@
           document.getElementById('contestDescription').value = '';
           document.getElementById('contestStartAt').value = '';
           document.getElementById('contestEndAt').value = '';
+          document.getElementById('contestGroups').value = '';
           document.getElementById('contestProblemIDs').value = '';
           loadContests();
         } catch (e) {

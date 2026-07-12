@@ -5,26 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>排行榜 - Gooj</title>
     <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/common.js"></script>
   </head>
   <body>
-    <div class="container">
-      <nav>
-        <a href="/problemlist">题目列表</a>
-        <a href="/user_profile">用户信息</a>
-        <a href="/contest">比赛</a>
-        <a href="/ranking">排行榜</a>
-        <a href="/submissions">提交记录</a>
+    <div class="page-container">
+      <nav class="navbar">
+        <a href="/problemlist" class="navbar-brand">
+          <span class="logo">G</span>
+          <span>Gooj</span>
+        </a>
+        <div class="navbar-links">
+          <a href="/problemlist"><span class="icon"></span> 题目列表</a>
+          <a href="/user_profile"><span class="icon"></span> 用户信息</a>
+          <a href="/contest"><span class="icon"></span> 比赛</a>
+          <a href="/submissions"><span class="icon"></span> 提交记录</a>
+          <a href="/ranking" class="active"><span class="icon"></span> 排行榜</a>
+        </div>
+        <div class="navbar-user">
+          <span class="username" id="navbarUser">加载中...</span>
+          <span class="rating-badge" id="navbarRating"> 1500</span>
+          <button onclick="logout()">登出</button>
+        </div>
       </nav>
 
       <div class="card">
-        <h1>Rating 排行榜</h1>
+        <h1> Rating 排行榜</h1>
         <table>
           <thead>
             <tr>
-              <th>排名</th>
-              <th>用户名</th>
-              <th>Rating</th>
-              <th>用户组</th>
+              <th> 排名</th>
+              <th> 用户名</th>
+              <th> Rating</th>
+              <th> 用户组</th>
             </tr>
           </thead>
           <tbody id="leaderboardBody"></tbody>
@@ -35,9 +47,7 @@
     <script>
       async function loadRanking() {
         const res = await fetch('/api/rankings');
-        if (!res.ok) {
-          throw new Error(await res.text());
-        }
+        if (!res.ok) { throw new Error(await res.text()); }
         const data = await res.json();
         const rows = data.rows || data.users || [];
         const body = document.getElementById('leaderboardBody');
@@ -56,7 +66,7 @@
           tr.innerHTML = `
             <td>${index + 1}</td>
             <td><a href="/user/${encodeURIComponent(username)}">${username}</a></td>
-            <td>${rating}</td>
+            <td><strong>${rating}</strong></td>
             <td>${group}</td>
           `;
           body.appendChild(tr);

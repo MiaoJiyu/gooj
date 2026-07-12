@@ -72,6 +72,7 @@ type Problem struct {
 	TimeLimitMs int
 	MemLimitMB  int
 	PublicTime  *time.Time `gorm:"index"`
+	TestVisible bool       `gorm:"default:false"` // If false, non-editors cannot see evaluation info (test results, scores, etc.)
 }
 
 // Contest represents a contest with an associated problem set and a leaderboard.
@@ -84,7 +85,22 @@ type Contest struct {
 	EndAt       time.Time `gorm:"index"`
 	Groups      []Group   `gorm:"many2many:contest_groups;"`
 	// Type        string    `gorm:"size:32"` // NOI, IOI etc.
-	Problems  []Problem `gorm:"many2many:contest_problems;"`
-	CreatedBy string    `gorm:"size:128"`
-	CreatedAt time.Time
+	Problems      []Problem `gorm:"many2many:contest_problems;"`
+	CreatedBy     string    `gorm:"size:128"`
+	CreatedAt     time.Time
+	RatingSettled bool `gorm:"default:false"` // Marked true when rating settlement is complete (only once, even on failure)
+}
+
+// ContestRatingHistory records rating changes after a contest ends.
+type ContestRatingHistory struct {
+	ID           uint   `gorm:"primaryKey"`
+	Username     string `gorm:"index;size:128"`
+	ContestID    uint   `gorm:"index"`
+	ContestName  string `gorm:"size:256"`
+	Rank         int    `json:"rank"`          // Final rank in contest (considering ties)
+	TotalScore   int    `json:"total_score"`   // Total score achieved
+	RatingBefore int    `json:"rating_before"` // Rating before contest
+	RatingAfter  int    `json:"rating_after"`  // Rating after contest
+	RatingChange int    `json:"rating_change"` // Rating delta (after - before)
+	CreatedAt    time.Time
 }

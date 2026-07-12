@@ -116,6 +116,56 @@
         border-radius: 4px;
         font-size: 0.9em;
       }
+      .test-group-item .group-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .test-group-item .group-cases {
+        color: #666;
+        font-size: 0.85em;
+        margin-bottom: 8px;
+      }
+      .test-group-item .group-actions {
+        display: flex;
+        gap: 5px;
+      }
+      .test-group-item .group-actions button {
+        font-size: 0.8em;
+        padding: 3px 8px;
+      }
+      .add-group-form {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px dashed #ddd;
+      }
+      .add-group-form input {
+        padding: 6px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .add-case-form {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+        margin-top: 8px;
+      }
+      .available-cases {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 5px;
+      }
+      .case-tag {
+        background: #e3f2fd;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 0.85em;
+      }
       .form-actions {
         display: flex;
         gap: 10px;
@@ -169,17 +219,31 @@
               <label>测试点数量</label>
               <input type="number" id="infoTestsCount" readonly />
             </div>
+            <div class="info-item" style="display:flex; align-items:center; gap:8px;">
+              <label style="margin:0;">显示评测信息</label>
+              <input type="checkbox" id="infoTestVisible" style="width:auto;" />
+              <span style="font-size:0.85em; color:#666;">关闭时普通用户看不到AC/WA/TLE等评测结果</span>
+            </div>
           </div>
           
           <div class="test-groups" id="testGroupsSection" style="display: none;">
-            <h4>数据分组信息</h4>
+            <h4>数据分组管理</h4>
             <div id="testGroupsList"></div>
+            <div class="add-group-form">
+              <input type="number" id="newGroupScore" placeholder="分组分数" min="0" style="width: 80px;" />
+              <button type="button" id="addGroupBtn" class="info">新增分组</button>
+              <button type="button" id="saveGroupsBtn" class="success">保存分组</button>
+            </div>
+            <div style="margin-top: 10px; font-size: 0.85em; color: #666;">
+              提示：点击"新增分组"添加新分组，使用分组内的输入框添加测试点
+            </div>
           </div>
         </div>
 
         <div class="tabs">
           <div class="tab active" data-tab="markdown">编辑 Markdown</div>
           <div class="tab" data-tab="tuack">上传 Tuack</div>
+          <div class="tab" data-tab="datazip">测试数据</div>
         </div>
 
         <!-- Markdown Editor Tab -->
@@ -212,6 +276,27 @@
           <div class="preview-area">
             <h3>处理结果</h3>
             <div id="tuackPreview"></div>
+          </div>
+        </div>
+
+        <!-- Data Zip Upload Tab -->
+        <div id="datazip-tab" class="tab-content">
+          <div class="form-group">
+            <label>上传 data.zip（仅含 *.in 和 *.ans 文件）</label>
+            <div class="file-upload" id="dataZipDropZone">
+              <p>拖拽 zip 文件到此处，或点击选择文件</p>
+              <input type="file" id="dataZipFile" accept=".zip" style="display: none" />
+              <p id="dataZipFileName" style="font-weight: bold; margin-top: 10px;"></p>
+            </div>
+            <p style="font-size: 0.9em; color: #666; margin-top: 10px;">
+              zip 中只包含若干 <code>*.in</code> 和 <code>*.ans</code> 文件（<br />
+              例如：<code>1.in</code>, <code>1.ans</code>, <code>2.in</code>, <code>2.ans</code> …）。<br />
+              上传后自动按序号写入 tests 目录并生成 config.json。
+            </p>
+          </div>
+          <div class="preview-area">
+            <h3>导入结果</h3>
+            <div id="dataZipPreview"></div>
           </div>
         </div>
       </div>
@@ -266,21 +351,15 @@
           document.getElementById('infoMemLimit').value = data.mem_limit_mb || '';
           document.getElementById('infoPublicTime').value = data.public_time ? data.public_time.slice(0, 16) : '';
           document.getElementById('infoTestsCount').value = data.tests_count || '';
+          document.getElementById('infoTestVisible').checked = !!data.test_visible;
           document.getElementById('markdownEditor').value = data.statement || '';
           
           // Display test groups
           if (data.config && data.config.test_cases) {
-            const testGroupsList = document.getElementById('testGroupsList');
-            testGroupsList.innerHTML = '';
-            data.config.test_cases.forEach((group, index) => {
-              const groupDiv = document.createElement('div');
-              groupDiv.className = 'test-group-item';
-              const cases = group.cases ? group.cases.join(', ') : '';
-              groupDiv.innerHTML = `<strong>分组 ${index + 1}:</strong> 测试点 ${cases} | 分数：${group.score || 0}`;
-              testGroupsList.appendChild(groupDiv);
-            });
+            renderTestGroups(data.config.test_cases, data.tests_count || 0);
             document.getElementById('testGroupsSection').style.display = 'block';
           } else {
+            renderTestGroups([], data.tests_count || 0);
             document.getElementById('testGroupsSection').style.display = 'none';
           }
           
@@ -330,7 +409,8 @@
           description: document.getElementById('markdownEditor').value,
           time_limit_ms: parseInt(document.getElementById('infoTimeLimit').value) || 0,
           mem_limit_mb: parseInt(document.getElementById('infoMemLimit').value) || 0,
-          public_time: publicTimeValue ? new Date(publicTimeValue).toISOString() : ''
+          public_time: publicTimeValue ? new Date(publicTimeValue).toISOString() : '',
+          test_visible: document.getElementById('infoTestVisible').checked
         };
         
         if (!updateData.title) {
@@ -423,6 +503,186 @@
           preview.innerHTML = `<p style="color: red;">处理失败：${e.message}</p>`;
         }
       }
+
+      // Data.zip upload handling
+      const dataZipDropZone = document.getElementById('dataZipDropZone');
+      const dataZipFileInput = document.getElementById('dataZipFile');
+      const dataZipFileName = document.getElementById('dataZipFileName');
+      const dataZipPreview = document.getElementById('dataZipPreview');
+
+      dataZipDropZone.addEventListener('click', () => dataZipFileInput.click());
+
+      dataZipDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dataZipDropZone.style.borderColor = '#007bff';
+      });
+
+      dataZipDropZone.addEventListener('dragleave', () => {
+        dataZipDropZone.style.borderColor = '#ccc';
+      });
+
+      dataZipDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dataZipDropZone.style.borderColor = '#ccc';
+        if (e.dataTransfer.files.length > 0) {
+          handleDataZipFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      dataZipFileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleDataZipFile(e.target.files[0]);
+        }
+      });
+
+      async function handleDataZipFile(file) {
+        dataZipFileName.textContent = file.name;
+        dataZipPreview.innerHTML = '<p>正在处理...</p>';
+
+        const problemID = document.getElementById('problemID').value.trim();
+        if (!problemID) {
+          alert('请先输入题目 ID');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('problem_id', problemID);
+
+        try {
+          const res = await fetch('/api/import_data_zip', {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(errorText);
+          }
+
+          const data = await res.json();
+          dataZipPreview.innerHTML = `
+            <p style="color: green;">导入成功！</p>
+            <p>共导入了 <strong>${data.test_count}</strong> 个测试点：</p>
+            <ul>
+              ${(data.tests || []).map(t =>
+                `<li>测试点 ${t.input_file} / ${t.output_file}</li>`
+              ).join('')}
+            </ul>
+          `;
+
+          // Reload to update test count and config display
+          await loadProblemData(problemID);
+        } catch (e) {
+          alert('处理 data.zip 失败：' + e.message);
+          dataZipPreview.innerHTML = `<p style="color: red;">处理失败：${e.message}</p>`;
+        }
+      }
+
+      // Test groups management
+      let testGroups = [];
+
+      function renderTestGroups(groups, totalTests) {
+        testGroups = groups.map(g => ({ cases: g.cases || [], score: g.score || 0 }));
+        const container = document.getElementById('testGroupsList');
+        container.innerHTML = '';
+
+        testGroups.forEach((group, index) => {
+          const groupDiv = document.createElement('div');
+          groupDiv.className = 'test-group-item';
+          groupDiv.innerHTML = `
+            <div class="group-header">
+              <strong>分组 ${index + 1}</strong>
+              <span>分数: <input type="number" class="group-score" value="${group.score}" min="0" style="width: 60px; padding: 3px;" /></span>
+            </div>
+            <div class="group-cases">
+              测试点: <span class="cases-display">${group.cases.length > 0 ? group.cases.join(', ') : '暂无'}</span>
+            </div>
+            <div class="add-case-form">
+              <input type="number" class="add-case-input" placeholder="测试点ID" min="1" max="${totalTests}" style="width: 80px; padding: 3px;" />
+              <button type="button" class="info add-case-btn" data-group-index="${index}">添加测试点</button>
+            </div>
+            <div class="group-actions">
+              <button type="button" class="danger delete-group-btn" data-group-index="${index}">删除分组</button>
+            </div>
+          `;
+          container.appendChild(groupDiv);
+        });
+
+        // Attach event listeners
+        document.querySelectorAll('.add-case-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.groupIndex);
+            const input = btn.previousElementSibling;
+            const caseId = parseInt(input.value);
+            if (caseId > 0) {
+              if (!testGroups[idx].cases.includes(caseId)) {
+                testGroups[idx].cases.push(caseId);
+                testGroups[idx].cases.sort((a, b) => a - b);
+                renderTestGroups(testGroups, totalTests);
+              }
+              input.value = '';
+            }
+          });
+        });
+
+        document.querySelectorAll('.delete-group-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const idx = parseInt(btn.dataset.groupIndex);
+            if (confirm(`确定删除分组 ${idx + 1}？`)) {
+              testGroups.splice(idx, 1);
+              renderTestGroups(testGroups, totalTests);
+            }
+          });
+        });
+
+        document.querySelectorAll('.group-score').forEach(input => {
+          input.addEventListener('change', () => {
+            const groupDiv = input.closest('.test-group-item');
+            const idx = Array.from(document.querySelectorAll('.test-group-item')).indexOf(groupDiv);
+            testGroups[idx].score = parseInt(input.value) || 0;
+          });
+        });
+      }
+
+      // Add new group
+      document.getElementById('addGroupBtn').addEventListener('click', () => {
+        const scoreInput = document.getElementById('newGroupScore');
+        const score = parseInt(scoreInput.value) || 0;
+        testGroups.push({ cases: [], score: score });
+        const totalTests = parseInt(document.getElementById('infoTestsCount').value) || 0;
+        renderTestGroups(testGroups, totalTests);
+        scoreInput.value = '';
+      });
+
+      // Save groups
+      document.getElementById('saveGroupsBtn').addEventListener('click', async () => {
+        const problemID = document.getElementById('problemID').value.trim();
+        if (!problemID) return alert('请先加载题目');
+
+        // Update scores from inputs before saving
+        document.querySelectorAll('.group-score').forEach((input, idx) => {
+          if (testGroups[idx]) {
+            testGroups[idx].score = parseInt(input.value) || 0;
+          }
+        });
+
+        try {
+          const res = await fetch('/api/test_groups/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              problem_id: problemID,
+              test_groups: testGroups
+            })
+          });
+          if (!res.ok) throw new Error(await res.text());
+          alert('分组保存成功！');
+          await loadProblemData(problemID);
+        } catch (e) {
+          alert('保存失败：' + e.message);
+        }
+      });
     </script>
   </body>
 </html>

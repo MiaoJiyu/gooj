@@ -5,11 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>比赛 - Gooj</title>
     <link rel="stylesheet" href="/static/style.css" />
+    <script src="/static/common.js"></script>
     <style>
-      .contest-grid {
-        display: grid;
-        gap: 16px;
-      }
+      .contest-grid { display: grid; gap: 16px; }
       .contest-card {
         background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
         border: 1px solid #dbeafe;
@@ -17,62 +15,51 @@
         padding: 20px;
         box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
       }
-      .contest-card h3 {
-        margin-bottom: 8px;
-      }
-      .contest-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        color: #6b7280;
-        font-size: 14px;
-        margin-bottom: 12px;
-      }
+      .contest-card h3 { margin-bottom: 8px; }
+      .contest-meta { display: flex; flex-wrap: wrap; gap: 10px; color: #6b7280; font-size: 14px; margin-bottom: 12px; }
       .contest-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 600;
-        background: #eef2ff;
-        color: #3730a3;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+        background: #eef2ff; color: #3730a3;
       }
       .problem-pill {
-        display: inline-block;
-        margin: 4px 8px 4px 0;
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: #f3f4f6;
-        color: #111827;
-        font-size: 13px;
+        display: inline-block; margin: 4px 8px 4px 0;
+        padding: 6px 10px; border-radius: 999px;
+        background: #f3f4f6; color: #111827; font-size: 13px;
       }
-      .contest-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 12px;
-      }
+      .contest-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
     </style>
   </head>
   <body>
-    <div class="container">
-      <nav>
-        <a href="/problemlist">题目列表</a>
-        <a href="/user_profile">用户信息</a>
-        <a href="/contest">比赛</a>
-        <a href="/ranking">排行榜</a>
-        <a href="/submissions">提交记录</a>
+    <div class="page-container">
+      <nav class="navbar">
+        <a href="/problemlist" class="navbar-brand">
+          <span class="logo">G</span>
+          <span>Gooj</span>
+        </a>
+        <div class="navbar-links">
+          <a href="/problemlist"><span class="icon"></span> 题目列表</a>
+          <a href="/user_profile"><span class="icon"></span> 用户信息</a>
+          <a href="/contest" class="active"><span class="icon"></span> 比赛</a>
+          <a href="/submissions"><span class="icon"></span> 提交记录</a>
+          <a href="/ranking"><span class="icon"></span> 排行榜</a>
+        </div>
+        <div class="navbar-user">
+          <span class="username" id="navbarUser">加载中...</span>
+          <span class="rating-badge" id="navbarRating"> 1500</span>
+          <button onclick="logout()">登出</button>
+        </div>
       </nav>
+
       <div class="card">
         <div style="display:flex; justify-content: space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-          <h1 style="margin:0;">比赛列表</h1>
-          <a href="/ranking" class="button secondary">全球 Rating 排行榜</a>
+          <h1 style="margin:0;"> 比赛列表</h1>
+          <a href="/ranking" class="button secondary"> 全球 Rating 排行榜</a>
         </div>
-        <div id="contestList" class="contest-grid">加载中...</div>
+        <div id="contestList" class="contest-grid" style="margin-top: 20px;">加载中...</div>
       </div>
     </div>
+
     <script>
       async function loadContests() {
         const res = await fetch('/api/contests');
@@ -80,7 +67,7 @@
         const contests = data.contests || [];
         const container = document.getElementById('contestList');
         if (!contests.length) {
-          container.innerHTML = '<p>暂无比赛</p>';
+          container.innerHTML = '<p class="no-data">暂无比赛</p>';
           return;
         }
 
@@ -94,25 +81,24 @@
           const end = new Date(contest.end_at).toLocaleString();
           const now = Date.now();
           const status = new Date(contest.end_at).getTime() < now ? '已结束' : new Date(contest.start_at).getTime() > now ? '未开始' : '进行中';
+          const statusClass = status === '进行中' ? 'status-running' : status === '已结束' ? 'status-ended' : 'status-upcoming';
           return `
             <div class="contest-card">
               <span class="contest-badge">${status}</span>
               <h3>${contest.title || contest.name}</h3>
               <div class="contest-meta">
-                <span>开始：${start}</span>
-                <span>结束：${end}</span>
+                <span> 开始: ${start}</span>
+                <span> 结束: ${end}</span>
               </div>
-              <p>${contest.description || '暂无比赛说明'}</p>
-              <div>${problems || '<span class="text-muted">暂无题目</span>'}</div>
+              <div>${problems}</div>
               <div class="contest-actions">
-                <a href="/contest/${contest.id}" class="button primary">进入比赛</a>
-                <a href="/contest/${contest.id}/leaderboard" class="button secondary">查看排行榜</a>
+                <a href="/contest/${contest.id}" class="button primary">查看详情</a>
+                <a href="/contest/${contest.id}/leaderboard" class="button secondary">排行榜</a>
               </div>
             </div>
           `;
         }).join('');
       }
-
       loadContests();
     </script>
   </body>

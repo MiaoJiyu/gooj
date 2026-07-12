@@ -98,6 +98,32 @@ func GetSubmissionsHandler(w http.ResponseWriter, r *http.Request) {
 		submissions[i].Code = ""
 	}
 
+	// Strip TestResults if TestVisible=false and user is not an editor
+	canViewAll := manage.CheckUserPermission(currentUsername, "EditPermission")
+	if !canViewAll && len(submissions) > 0 {
+		// Collect problem IDs to batch-load TestVisible flags
+		problemIDs := make([]uint, 0, len(submissions))
+		for _, s := range submissions {
+			problemIDs = append(problemIDs, s.ProblemID)
+		}
+		var rows []struct {
+			ID          uint
+			TestVisible bool
+		}
+		db.Model(&sql_service.Problem{}).Where("id IN ?", problemIDs).Pluck("id, test_visible", &rows)
+		showMap := make(map[uint]bool)
+		for _, row := range rows {
+			showMap[row.ID] = row.TestVisible
+		}
+		for i := range submissions {
+			if !showMap[submissions[i].ProblemID] {
+				submissions[i].TestResults = nil
+				submissions[i].Score = 0
+				submissions[i].Status = "unknown"
+			}
+		}
+	}
+
 	// Prepare response
 	response := map[string]interface{}{
 		"total":       total,
@@ -142,6 +168,16 @@ func GetSubmissionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Strip TestResults and Score if the problem has TestVisible=false and user is not an editor
+	if !manage.CheckUserPermission(currentUsername, "EditPermission") {
+		var problem sql_service.Problem
+		if err := db.First(&problem, submission.ProblemID).Error; err == nil && !problem.TestVisible {
+			submission.TestResults = nil
+			submission.Score = 0
+			submission.Status = "unknown"
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(submission)
 }
@@ -163,10 +199,30 @@ func GetProblemStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 	db := sql_service.DB()
 
+	// Load problem to check TestVisible
+	var problem sql_service.Problem
+	if err := db.First(&problem, problemID).Error; err != nil {
+		http.Error(w, "problem not found", http.StatusNotFound)
+		return
+	}
+
+	canViewEvaluation := manage.CheckUserPermission(currentUsername, "EditPermission") || problem.TestVisible
+	if !canViewEvaluation {
+		// Return zeroed evaluation data — do not leak any AC/score info
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"problem_id":        problemID,
+			"passed_count":      0,
+			"user_best_score":   0,
+			"total_submissions": 0,
+		})
+		return
+	}
+
 	// Get total number of users who passed this problem
 	var passedCount int64
 	err = db.Model(&sql_service.Submission{}).
-		Where("problem_id = ? AND status = 'accepted'", problemID).
+		Where("problem_id = ? AND status = 'ok'", problemID).
 		Distinct("username").
 		Count(&passedCount).Error
 

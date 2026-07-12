@@ -18,29 +18,65 @@
       <h1>比赛排行榜</h1>
       <div class="card">
         <h2 id="contestName">加载中...</h2>
-        <table>
-          <thead>
-            <tr><th>排名</th><th>用户名</th><th>Rating</th><th>总分</th><th>解题数</th></tr>
-          </thead>
-          <tbody id="leaderboardBody"></tbody>
-        </table>
+        <div id="leaderboardContainer"></div>
       </div>
     </div>
     <script>
       const contestId = new URL(location.href).pathname.split('/')[2];
+      let problemTitles = [];
+
+      async function loadContestDetails() {
+        const res = await fetch('/api/contest/' + encodeURIComponent(contestId));
+        if (!res.ok) return null;
+        const data = await res.json();
+        document.getElementById('contestName').textContent = data.title || ('比赛 #' + contestId);
+        problemTitles = (data.problems || []).map(p => ({ id: p.id, title: p.title }));
+        return data;
+      }
+
       async function load() {
+        const contestData = await loadContestDetails();
+        if (!contestData) {
+          document.getElementById('leaderboardContainer').innerHTML = '<p>无法加载比赛信息</p>';
+          return;
+        }
+
         const res = await fetch('/api/contest/' + encodeURIComponent(contestId) + '/leaderboard');
         const data = await res.json();
-        document.getElementById('contestName').textContent = '比赛 #' + contestId;
         const rows = data.rows || [];
-        const body = document.getElementById('leaderboardBody');
-        body.innerHTML = '';
+        const problemIds = problemTitles.map(p => p.id);
+
+        // Build table
+        const table = document.createElement('table');
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        headerRow.innerHTML = '<th>排名</th><th>用户名</th><th>Rating</th>';
+        problemTitles.forEach(p => {
+          headerRow.innerHTML += `<th>${p.title || ('题目 ' + p.id)}</th>`;
+        });
+        headerRow.innerHTML += '<th>总分</th>';
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
         rows.forEach((row, idx) => {
           const tr = document.createElement('tr');
           const rating = row.rating || 1500;
-          tr.innerHTML = `<td>${idx + 1}</td><td><a href="/user/${encodeURIComponent(row.username)}">${row.username}</a></td><td>${rating}</td><td>${row.total}</td><td>${Object.keys(row.scores || {}).length}</td>`;
-          body.appendChild(tr);
+          tr.innerHTML = `<td>${idx + 1}</td><td><a href="/user/${encodeURIComponent(row.username)}">${row.username}</a></td><td>${rating}</td>`;
+          problemIds.forEach(pid => {
+            const score = row.scores ? (row.scores[pid] || 0) : 0;
+            tr.innerHTML += `<td>${score}</td>`;
+          });
+          tr.innerHTML += `<td><b>${row.total || 0}</b></td>`;
+          tbody.appendChild(tr);
         });
+
+        table.appendChild(tbody);
+        document.getElementById('leaderboardContainer').appendChild(table);
+
+        if (rows.length === 0) {
+          document.getElementById('leaderboardContainer').innerHTML = '<p>暂无排名数据</p>';
+        }
       }
       load();
     </script>

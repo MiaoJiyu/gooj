@@ -32,8 +32,8 @@ func CreateContestHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.Name == "" || req.Title == "" || req.StartAt == "" || req.EndAt == "" {
-		http.Error(w, "missing fields", http.StatusBadRequest)
+	if req.Title == "" || req.StartAt == "" || req.EndAt == "" {
+		http.Error(w, "missing fields: title, start_at and end_at are required", http.StatusBadRequest)
 		return
 	}
 

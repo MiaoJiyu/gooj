@@ -92,6 +92,20 @@ func LastSubmissionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	currentUsername := manage.CurrentUsername(r)
+	db := sql_service.DB()
+
+	// Gate: check TestVisible + EditPermission before returning any evaluation info
+	var problem sql_service.Problem
+	if err := db.First(&problem, problemID).Error; err == nil {
+		canView := manage.CheckUserPermission(currentUsername, "EditPermission") || problem.TestVisible
+		if !canView {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{"submission": nil, "results": []interface{}{}})
+			return
+		}
+	}
+
 	sub, results, err := sql_service.GetLastSubmission(user, strconv.FormatUint(uint64(problemID), 10))
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -174,6 +188,7 @@ func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 		"mem_limit_mb":   problem.MemLimitMB,
 		"tests_count":    problem.TestsCount,
 		"public_time":    publicTime,
+		"test_visible":   problem.TestVisible,
 		"statement":      string(stmtBytes),
 		"statement_html": buf.String(),
 		"config":         cfg,
@@ -206,6 +221,7 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 		TimeLimitMs int    `json:"time_limit_ms"`
 		MemLimitMB  int    `json:"mem_limit_mb"`
 		PublicTime  string `json:"public_time"`
+		TestVisible *bool  `json:"test_visible"`
 	}
 
 	var req UpdateRequest
@@ -250,6 +266,9 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		problem.PublicTime = &parsedPublicTime
+	}
+	if req.TestVisible != nil {
+		problem.TestVisible = *req.TestVisible
 	}
 
 	// Save to database

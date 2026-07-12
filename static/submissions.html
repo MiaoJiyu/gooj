@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>提交记录 - Gooj</title>
     <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/common.js"></script>
     <style>
         .submissions-container {
             max-width: 1200px;
@@ -37,7 +38,7 @@
         
         .filter-btn {
             padding: 8px 16px;
-            background-color: #007bff;
+            background-color: #667eea;
             color: white;
             border: none;
             border-radius: 4px;
@@ -45,7 +46,12 @@
         }
         
         .filter-btn:hover {
-            background-color: #0056b3;
+            background-color: #5568d3;
+        }
+        
+        .submissions-table th {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%);
+            color: white;
         }
         
         .submissions-table {
@@ -175,7 +181,8 @@
           <a href="/problemlist">题目列表</a>
           <a href="/user_profile">用户信息</a>
           <a href="/contest">比赛</a>
-          <a href="/submissions">提交记录</a>
+          <a href="/submissions" class="active">提交记录</a>
+          <a href="/ranking">排行榜</a>
         </nav>
         <div class="header">
             <h1>提交记录</h1>

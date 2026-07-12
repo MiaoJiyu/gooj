@@ -5,43 +5,53 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>题目 - Gooj</title>
     <link rel="stylesheet" href="/static/style.css" />
-    <!-- KaTeX CSS for LaTeX rendering -->
+    <script src="/static/common.js"></script>
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/katex.min.css" crossorigin="anonymous">
   </head>
   <body>
-    <div class="container">
-      <nav>
-        <a href="/problemlist">题目列表</a>
-        <a href="/user_profile">用户信息</a>
-        <a href="/contest">比赛</a>
-        <a href="/submissions">提交记录</a>
+    <div class="page-container">
+      <nav class="navbar">
+        <a href="/problemlist" class="navbar-brand">
+          <span class="logo">G</span>
+          <span>Gooj</span>
+        </a>
+        <div class="navbar-links">
+          <a href="/problemlist"><span class="icon"></span> 题目列表</a>
+          <a href="/user_profile"><span class="icon"></span> 用户信息</a>
+          <a href="/contest"><span class="icon"></span> 比赛</a>
+          <a href="/submissions"><span class="icon"></span> 提交记录</a>
+          <a href="/ranking"><span class="icon"></span> 排行榜</a>
+        </div>
+        <div class="navbar-user">
+          <span class="username" id="navbarUser">加载中...</span>
+          <span class="rating-badge" id="navbarRating"> 1500</span>
+          <button onclick="logout()">登出</button>
+        </div>
       </nav>
-      <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
-        <h1 id="title" style="margin-bottom: 0;">题目</h1>
-        <a id="toSubmit" href="#" class="button primary">提交</a>
-        <a id="toSubmissions" href="#" class="button secondary">本题提交记录</a>
-      </div>
-      <div id="limits"></div>
-      <div class="card">
-        <h2>题面</h2>
-        <div id="statement"></div>
-      </div>
-      <div class="actions">
-        <span id="editOption" style="display:none">
-          <a href="#" id="editProblem" class="button secondary">编辑题目</a>
-        </span>
+
+      <div class="statement-container">
+        <div class="statement-header">
+          <h1 id="title" style="margin: 0;">题目</h1>
+          <div class="statement-meta">
+            <span id="limits" class="meta-badge"></span>
+          </div>
+        </div>
+        
+        <div class="statement-actions">
+          <a id="toSubmit" href="#" class="button primary"> 提交代码</a>
+          <a id="toSubmissions" href="#" class="button secondary"> 本题提交记录</a>
+          <span id="editOption" style="display:none">
+            <a id="editProblem" href="#" class="button secondary"> 编辑题目</a>
+          </span>
+        </div>
+
+        <div class="statement-content card">
+          <h2>📖 题面</h2>
+          <div id="statement"></div>
+        </div>
       </div>
     </div>
-    <script>
-      // ...existing code...
-      // 增加“本题提交记录”按钮跳转
-      document.addEventListener('DOMContentLoaded', function() {
-        const id = (new URL(location.href)).searchParams.get('id') || '1';
-        document.getElementById('toSubmissions').href = '/submissions?problem=' + encodeURIComponent(id);
-      });
-    </script>
 
-    <!-- KaTeX JS for LaTeX rendering - load before custom script -->
     <script src="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/katex.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" crossorigin="anonymous"></script>
 
@@ -49,21 +59,28 @@
       function qsGet(name) { const u=new URL(location.href); return u.searchParams.get(name); }
       const id = qsGet('id') || '1';
       document.getElementById('title').textContent = '题目 ' + id;
+
+      // 增加"本题提交记录"按钮跳转
+      document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('toSubmissions').href = '/submissions?problem=' + encodeURIComponent(id);
+      });
+
       async function load(){
         const r = await fetch('/api/problem/' + encodeURIComponent(id));
         if (!r.ok) { document.getElementById('statement').textContent = '加载失败'; return; }
         const j = await r.json();
-        // prefer server-rendered HTML when available
+        
         if (j.statement_html) {
           document.getElementById('statement').innerHTML = j.statement_html;
         } else {
           document.getElementById('statement').textContent = j.statement || '';
         }
+        
         if (j.config) {
           const cfg = j.config;
           let txt = '';
-          if (cfg.time_limit) txt += '时间限制: ' + cfg.time_limit + ' s; ';
-          if (cfg.memory_limit) txt += '内存限制: ' + cfg.memory_limit + ' MB; ';
+          if (cfg.time_limit) txt += ' 时间限制: ' + cfg.time_limit + 's; ';
+          if (cfg.memory_limit) txt += ' 内存限制: ' + cfg.memory_limit + 'MB; ';
           document.getElementById('limits').textContent = txt;
         }
         document.getElementById('toSubmit').href = '/submit?id=' + encodeURIComponent(id);
@@ -79,9 +96,10 @@
             ],
             throwOnError: false
           });
-        } else {
-          console.error('KaTeX auto-render not loaded');
         }
+
+        // 添加复制按钮到代码块
+        setTimeout(initCodeCopyButtons, 100);
 
         // Check user permissions for editing
         const user = localStorage.getItem('username');

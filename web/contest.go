@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/minicago/gooj/manage"
 	"github.com/minicago/gooj/sql_service"
 )
 
@@ -85,6 +87,21 @@ func ContestLeaderboardHandler(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "invalid contest id", http.StatusBadRequest)
+		return
+	}
+
+	contest, err := sql_service.GetContestByID(uint(id))
+	if err != nil {
+		http.Error(w, "contest not found", http.StatusNotFound)
+		return
+	}
+
+	currentUsername := manage.CurrentUsername(r)
+	hasEditPermission := manage.CheckUserPermission(currentUsername, "EditPermission")
+
+	// Only users with edit permission can view leaderboard during contest
+	if time.Now().Before(contest.EndAt) && !hasEditPermission {
+		http.Error(w, "leaderboard is only visible after contest ends", http.StatusForbidden)
 		return
 	}
 

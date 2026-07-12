@@ -77,6 +77,8 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/edit", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/edit.html")
 	}).Methods("GET")
+	// API to save test groups configuration
+	r.HandleFunc("/api/test_groups/save", edit.SaveTestGroupsHandler).Methods("POST")
 	// API to fetch statement.md and config.json for a problem
 	r.HandleFunc("/api/problem/{id}", ProblemDataHandler).Methods("GET")
 	// API to update problem metadata
@@ -119,6 +121,7 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/edit/add_test", edit.AddTestDataHandler).Methods("POST")
 	// Import tuack package from zip file
 	r.HandleFunc("/api/import_tuack", edit.ImportTuackHandler).Methods("POST")
+	r.HandleFunc("/api/import_data_zip", edit.ImportDataZipHandler).Methods("POST")
 
 	// Upload problem endpoint
 	r.HandleFunc("/api/upload_problem", UploadProblemHandler).Methods("POST")

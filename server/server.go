@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/minicago/gooj/cmd"
 	"github.com/minicago/gooj/config"
@@ -91,6 +92,10 @@ func StartServer(isbackground bool) {
 		log.Println("Judge service disabled")
 	}
 
+	// Start background rating calculator
+	StartRatingCalculator()
+	log.Println("Rating calculator started")
+
 	manage.Init()
 	cmdChan := make(chan string)
 	shutdownChan := make(chan int)
@@ -98,4 +103,30 @@ func StartServer(isbackground bool) {
 
 	listen(cmdChan)
 	shutdownChan <- 0
+}
+
+// StartRatingCalculator starts a background goroutine that checks for ended contests
+// and automatically calculates rating changes for participants
+func StartRatingCalculator() {
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+
+		for {
+			<-ticker.C
+			contests, err := sql_service.GetEndedContestsWithoutRating()
+			if err != nil {
+				log.Printf("Rating calculator: failed to get ended contests: %v", err)
+				continue
+			}
+
+			for _, contest := range contests {
+				if err := sql_service.CalculateContestRating(contest.ID); err != nil {
+					log.Printf("Rating calculator: failed to calculate rating for contest %d: %v", contest.ID, err)
+				} else {
+					log.Printf("Rating calculator: calculated ratings for contest %d (%s)", contest.ID, contest.Title)
+				}
+			}
+		}
+	}()
 }

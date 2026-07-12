@@ -12,15 +12,27 @@ import (
 
 // UserProfile represents user profile data for the homepage
 type UserProfile struct {
-	Username    string `json:"username"`
-	GroupName   string `json:"group_name"`
-	Rating      int    `json:"rating"`
-	Role        string `json:"role"`
-	SolvedCount int    `json:"solved_count"`
-	SolvedIDs   []uint `json:"solved_ids"`
-	TotalSub    int    `json:"total_submissions"`
-	ACSub       int    `json:"accepted_submissions"`
-	CreatedAt   string `json:"created_at"`
+	Username    string                `json:"username"`
+	GroupName   string                `json:"group_name"`
+	Rating      int                   `json:"rating"`
+	Role        string                `json:"role"`
+	SolvedCount int                   `json:"solved_count"`
+	SolvedIDs   []uint                `json:"solved_ids"`
+	TotalSub    int                   `json:"total_submissions"`
+	ACSub       int                   `json:"accepted_submissions"`
+	CreatedAt   string                `json:"created_at"`
+	Contests    []ContestHistoryEntry `json:"contests"`
+}
+
+// ContestHistoryEntry represents a user's contest participation record
+type ContestHistoryEntry struct {
+	ContestName  string `json:"contest_name"`
+	ContestID    uint   `json:"contest_id"`
+	Rank         int    `json:"rank"`
+	TotalScore   int    `json:"total_score"`
+	RatingBefore int    `json:"rating_before"`
+	RatingAfter  int    `json:"rating_after"`
+	RatingChange int    `json:"rating_change"`
 }
 
 // UserProfileHandler handles the user profile page
@@ -72,6 +84,21 @@ func GetUserProfileHandler(w http.ResponseWriter, r *http.Request) {
 	var acSub int64
 	db.Model(&sql_service.Submission{}).Where("username = ? AND status = ?", targetUsername, "ok").Count(&acSub)
 
+	// Get contest history
+	histories, _ := sql_service.GetUserRatingHistory(targetUsername)
+	contests := make([]ContestHistoryEntry, 0, len(histories))
+	for _, h := range histories {
+		contests = append(contests, ContestHistoryEntry{
+			ContestName:  h.ContestName,
+			ContestID:    h.ContestID,
+			Rank:         h.Rank,
+			TotalScore:   h.TotalScore,
+			RatingBefore: h.RatingBefore,
+			RatingAfter:  h.RatingAfter,
+			RatingChange: h.RatingChange,
+		})
+	}
+
 	profile := UserProfile{
 		Username:    user.Username,
 		GroupName:   user.GroupName,
@@ -82,6 +109,7 @@ func GetUserProfileHandler(w http.ResponseWriter, r *http.Request) {
 		TotalSub:    int(totalSub),
 		ACSub:       int(acSub),
 		CreatedAt:   user.CreatedAt.Format("2006-01-02 15:04:05"),
+		Contests:    contests,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -164,7 +192,7 @@ func GetUserSolvedProblemsHandler(w http.ResponseWriter, r *http.Request) {
 	var submissions []sql_service.Submission
 	db := sql_service.DB()
 
-	if err := db.Where("username = ? AND status = ?", targetUsername, "accepted").Find(&submissions).Error; err != nil {
+	if err := db.Where("username = ? AND status = ?", targetUsername, "ok").Find(&submissions).Error; err != nil {
 		http.Error(w, "Failed to fetch solved problems", http.StatusInternalServerError)
 		return
 	}

@@ -27,6 +27,16 @@
           <button id="createUserBtn" class="success" style="width: 100%">创建用户</button>
         </form>
       </div>
+
+      <!-- Password result panel (hidden until user is created) -->
+      <div class="card" id="passwordResult" style="display:none; margin-top: 16px; border: 2px solid #10b981; background: #f0fdf4;">
+        <h2 style="color:#065f46; margin-top:0;">用户创建成功</h2>
+        <p style="margin-bottom: 8px;">请将以下密码告知用户（仅显示一次）：</p>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input id="resultPassword" type="text" readonly style="font-size:20px; font-weight:bold; letter-spacing:2px; color:#065f46; background:#ffffff; width: 160px;" />
+          <button onclick="copyPassword()" style="padding:8px 16px; background:#10b981; color:white; border:none; border-radius:6px; cursor:pointer;">复制</button>
+        </div>
+      </div>
     </div>
 
     <script>
@@ -62,12 +72,19 @@
           if (!username || !group) return alert('请输入用户名并选择用户组');
 
           const res = await postJSON('/api/create_user', { username, group });
-          alert(`用户创建成功，密码: ${res.password}`);
-          location.href = '/manage';
+          document.getElementById('resultPassword').value = res.password || '';
+          document.getElementById('passwordResult').style.display = 'block';
         } catch (e) {
           alert('创建失败: ' + e.message);
         }
       });
+
+      function copyPassword() {
+        const input = document.getElementById('resultPassword');
+        input.select();
+        document.execCommand('copy');
+        alert('密码已复制到剪贴板');
+      }
 
       loadGroups();
     </script>

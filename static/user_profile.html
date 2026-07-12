@@ -132,6 +132,7 @@
                     <span id="group">用户组: ...</span>
                     <span id="role">角色: ...</span>
                     <span class="rating" id="rating">Rating: ...</span>
+                    <button id="resetPwBtn" style="display:none; padding:4px 12px; font-size:13px; background:#f59e0b; color:white; border:none; border-radius:6px; cursor:pointer;" onclick="resetPassword()">重置密码</button>
                 </div>
             </div>
         </div>
@@ -166,6 +167,13 @@
         <div class="section">
             <h2>通过的题目</h2>
             <div class="problem-list" id="solved-problems">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>比赛记录</h2>
+            <div id="contest-history">
                 <div class="loading">加载中...</div>
             </div>
         </div>
@@ -206,6 +214,9 @@
 
                 // Load solved problems
                 loadSolvedProblems(username);
+
+                // Load contest history
+                loadContestHistory(data.contests);
             })
             .catch(error => {
                 document.getElementById('username').textContent = '用户不存在';
@@ -218,7 +229,7 @@
                 .then(data => {
                     const container = document.getElementById('solved-problems');
                     if (data.solved_ids && data.solved_ids.length > 0) {
-                        container.innerHTML = data.solved_ids.map(id => 
+                        container.innerHTML = data.solved_ids.map(id =>
                             `<a href="/problem?id=${id}" class="problem-tag">${id}</a>`
                         ).join('');
                     } else {
@@ -226,10 +237,75 @@
                     }
                 })
                 .catch(error => {
-                    document.getElementById('solved-problems').innerHTML = 
+                    document.getElementById('solved-problems').innerHTML =
                         '<p class="no-data">加载失败</p>';
                 });
         }
+
+        function loadContestHistory(contests) {
+            const container = document.getElementById('contest-history');
+            if (!contests || contests.length === 0) {
+                container.innerHTML = '<p class="no-data">暂无比赛记录</p>';
+                return;
+            }
+
+            const html = '<table style="width:100%;border-collapse:collapse;">' +
+                '<thead>' +
+                '<tr style="background:#f5f5f5;text-align:left;">' +
+                '<th style="padding:10px;border:1px solid #ddd;">比赛名称</th>' +
+                '<th style="padding:10px;border:1px solid #ddd;">排名</th>' +
+                '<th style="padding:10px;border:1px solid #ddd;">总分</th>' +
+                '<th style="padding:10px;border:1px solid #ddd;">Rating变化</th>' +
+                '</tr>' +
+                '</thead>' +
+                '<tbody>' +
+                contests.map(c => {
+                    const ratingClass = c.rating_change > 0 ? 'color:#4CAF50;' : (c.rating_change < 0 ? 'color:#f44336;' : 'color:#666;');
+                    const ratingSign = c.rating_change > 0 ? '+' : '';
+                    return '<tr>' +
+                        `<td style="padding:10px;border:1px solid #ddd;"><a href="/contest?id=${c.contest_id}">${c.contest_name}</a></td>` +
+                        `<td style="padding:10px;border:1px solid #ddd;">${c.rank}</td>` +
+                        `<td style="padding:10px;border:1px solid #ddd;">${c.total_score}</td>` +
+                        `<td style="padding:10px;border:1px solid #ddd;${ratingClass}">${ratingSign}${c.rating_change}</td>` +
+                        '</tr>';
+                }).join('') +
+                '</tbody>' +
+                '</table>';
+            container.innerHTML = html;
+        }
+
+        // Show reset-password button if current user has EditPermission or is viewing own profile
+        function tryShowResetBtn() {
+            const currentUser = localStorage.getItem('username');
+            if (!currentUser) return;
+            // Check EditPermission
+            fetch('/api/user_permissions?username=' + encodeURIComponent(currentUser) + '&permission=EditPermission')
+                .then(res => res.ok ? res.json() : { permited: false })
+                .then(permData => {
+                    if (permData.permited || currentUser === username) {
+                        document.getElementById('resetPwBtn').style.display = 'inline-block';
+                    }
+                })
+                .catch(() => {});
+        }
+
+        async function resetPassword() {
+            if (!confirm(`确定要重置用户 ${username} 的密码吗？`)) return;
+            try {
+                const res = await fetch('/api/reset_password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                const data = await res.json();
+                alert(`密码已重置，新密码是：\n${data.password}\n请告知用户。`);
+            } catch (e) {
+                alert('重置失败：' + e.message);
+            }
+        }
+
+        tryShowResetBtn();
     </script>
 </body>
 </html>
