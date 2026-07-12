@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>创建题目 - Gooj</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .form-group input[type="text"],
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .form-group textarea {
+            min-height: 150px;
+            resize: vertical;
+            font-family: inherit;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            padding: 30px;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #4a90d9;
+            background: #f8f9fa;
+        }
+        .upload-area.dragover {
+            border-color: #4a90d9;
+            background: #e3f2fd;
+        }
+        .upload-area input[type="file"] {
+            display: none;
+        }
+        .upload-icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        .upload-text {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        .upload-hint {
+            font-size: 0.85em;
+            color: #666;
+        }
+        .submit-btn {
+            width: 100%;
+            padding: 14px;
+            background: #4a90d9;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .submit-btn:hover {
+            background: #357abd;
+        }
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .status-message {
+            padding: 12px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            text-align: center;
+            display: none;
+        }
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+        .status-message.loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #4a90d9;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .hint-text {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+        }
+        .file-selected {
+            color: #4a90d9;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="manage-container">
+        <nav>
+            <a href="/manage">返回管理</a>
+            <a href="/problemlist">题目列表</a>
+            <a href="/">返回首页</a>
+        </nav>
+        <h1>创建新题目</h1>
+
+        <div id="status-message" class="status-message"></div>
+
+        <form id="create-form">
+            <div class="form-group">
+                <label for="problem-title">题目标题 (中文)</label>
+                <input type="text" id="problem-title" name="title" required 
+                       placeholder="例如: 口袋问题, A+B问题">
+            </div>
+
+            <div class="form-group">
+                <label for="statement">题面内容 (Markdown)</label>
+                <textarea id="statement" name="statement" 
+                          placeholder="在这里输入题目描述，支持 Markdown 格式..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label>数据压缩包 (zip格式，可选)</label>
+                <div class="upload-area" id="upload-area">
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text">点击或拖拽文件到这里</div>
+                    <div class="upload-hint">支持 .zip 格式，包含 *.in 和 *.ans 文件</div>
+                    <input type="file" id="data-zip" name="data_zip" accept=".zip">
+                </div>
+                <p class="hint-text">提示：上传后每个测试点将自动分为独立分组</p>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submit-btn">
+                创建题目
+            </button>
+        </form>
+
+        <a href="/manage" class="back-link">返回管理页面</a>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('upload-area');
+        const dataZipInput = document.getElementById('data-zip');
+        const createForm = document.getElementById('create-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const statusMessage = document.getElementById('status-message');
+
+        uploadArea.addEventListener('click', () => {
+            dataZipInput.click();
+        });
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => uploadArea.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => uploadArea.classList.remove('dragover'), false);
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].name.endsWith('.zip')) {
+                dataZipInput.files = files;
+                updateUploadArea(files[0].name);
+            }
+        });
+
+        dataZipInput.addEventListener('change', () => {
+            if (dataZipInput.files.length > 0) {
+                updateUploadArea(dataZipInput.files[0].name);
+            }
+        });
+
+        function updateUploadArea(fileName) {
+            const uploadText = uploadArea.querySelector('.upload-text');
+            const uploadIcon = uploadArea.querySelector('.upload-icon');
+            uploadText.textContent = `已选择: ${fileName}`;
+            uploadText.classList.add('file-selected');
+            uploadIcon.textContent = '';
+        }
+
+        createForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            formData.append('title', document.getElementById('problem-title').value);
+            formData.append('statement', document.getElementById('statement').value);
+            
+            if (dataZipInput.files.length > 0) {
+                formData.append('data_zip', dataZipInput.files[0]);
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = '创建中...';
+            showMessage('正在创建题目，请稍候...', 'loading');
+
+            try {
+                const response = await fetch('/api/create_problem', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(`题目创建成功！题目ID: ${result.problem_id}`, 'success');
+                    setTimeout(() => {
+                        window.location.href = '/edit?problem=' + result.problem_id;
+                    }, 1500);
+                } else {
+                    showMessage(`创建失败: ${result.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`网络错误: ${error.message}`, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '创建题目';
+            }
+        });
+
+        function showMessage(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = 'status-message ' + type;
+        }
+    </script>
+</body>
+</html>

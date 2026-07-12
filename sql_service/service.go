@@ -39,6 +39,18 @@ func CreateUser(username, password string) error {
 	return db.Create(&u).Error
 }
 
+// GetUserByUsername returns a user by username
+func GetUserByUsername(username string) (User, error) {
+	if db == nil {
+		return User{}, errors.New("db not initialized")
+	}
+	var user User
+	if err := db.Preload("Group").Where("username = ?", username).First(&user).Error; err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
 // CreateUserWithGroup creates a user with a specific group
 func CreateUserWithGroup(username, password, group, createdBy string) error {
 	if db == nil {

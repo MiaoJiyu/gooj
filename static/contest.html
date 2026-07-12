@@ -72,11 +72,6 @@
         }
 
         container.innerHTML = contests.map(contest => {
-          const problems = (contest.problems || []).map(problem => {
-            const id = problem.ID || problem.id || '';
-            const title = problem.Title || problem.title || '题目';
-            return `<a class="problem-pill" href="/problem?id=${encodeURIComponent(id)}">${id}. ${title}</a>`;
-          }).join('');
           const start = new Date(contest.start_at).toLocaleString();
           const end = new Date(contest.end_at).toLocaleString();
           const now = Date.now();
@@ -90,7 +85,6 @@
                 <span> 开始: ${start}</span>
                 <span> 结束: ${end}</span>
               </div>
-              <div>${problems}</div>
               <div class="contest-actions">
                 <a href="/contest/${contest.id}" class="button primary">查看详情</a>
                 <a href="/contest/${contest.id}/leaderboard" class="button secondary">排行榜</a>

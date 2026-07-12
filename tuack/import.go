@@ -155,16 +155,7 @@ func ImportTuackPackage(zipPath, name, title string) (*ImportResult, error) {
 		return nil, fmt.Errorf("failed to create problem directory: %v", err)
 	}
 
-	// 8. Copy down directory if exists (needed before processing statement for samples)
-	downSrc := filepath.Join(tuackRoot, "down")
-	if _, err := os.Stat(downSrc); err == nil {
-		downDst := filepath.Join(problemDir, "down")
-		if err := copyDirectory(downSrc, downDst); err != nil {
-			return nil, fmt.Errorf("failed to copy down directory: %v", err)
-		}
-	}
-
-	// 8. Process statement to handle templates and samples
+	// Process statement to handle templates and samples
 	statement, err = ProcessStatement(statement, problemDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process statement: %v", err)
@@ -302,20 +293,8 @@ func UpdateTuackPackage(zipPath string, problemID uint) (*ImportResult, error) {
 	// Get problem directory
 	problemDir := filepath.Join("data", "problem", strconv.FormatUint(uint64(problem.ID), 10))
 
-	// Remove old test data and down directory
-	testsDir := filepath.Join(problemDir, "tests")
-	downDir := filepath.Join(problemDir, "down")
-	os.RemoveAll(testsDir)
-	os.RemoveAll(downDir)
-
-	// 7. Copy down directory if exists (needed before processing statement for samples)
-	downSrc := filepath.Join(tuackRoot, "down")
-	if _, err := os.Stat(downSrc); err == nil {
-		downDst := filepath.Join(problemDir, "down")
-		if err := copyDirectory(downSrc, downDst); err != nil {
-			return nil, fmt.Errorf("failed to copy down directory: %v", err)
-		}
-	}
+	// Remove old test data directory
+	os.RemoveAll(filepath.Join(problemDir, "tests"))
 
 	// 8. Process statement to handle templates and samples
 	statement, err := ProcessStatement(rawStatement, problemDir)

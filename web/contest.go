@@ -19,8 +19,34 @@ func ListContestsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	currentUsername := manage.CurrentUsername(r)
+	hasEditPermission := manage.CheckUserPermission(currentUsername, "EditPermission")
+
+	// Get current user's group if not editor
+	var userGroupName string
+	if !hasEditPermission {
+		user, err := sql_service.GetUserByUsername(currentUsername)
+		if err == nil {
+			userGroupName = user.GroupName
+		}
+	}
+
 	response := make([]map[string]interface{}, 0, len(contests))
 	for _, contest := range contests {
+		// Filter by group if user is not editor
+		if !hasEditPermission && userGroupName != "" {
+			hasGroup := false
+			for _, g := range contest.Groups {
+				if g.Name == userGroupName {
+					hasGroup = true
+					break
+				}
+			}
+			if !hasGroup {
+				continue
+			}
+		}
+
 		problems, err := sql_service.ListContestProblems(contest.ID)
 		if err != nil {
 			problems = []sql_service.Problem{}
@@ -58,6 +84,15 @@ func ContestDetailHandler(w http.ResponseWriter, r *http.Request) {
 	contest, err := sql_service.GetContestByID(uint(id))
 	if err != nil {
 		http.Error(w, "contest not found", http.StatusNotFound)
+		return
+	}
+
+	currentUsername := manage.CurrentUsername(r)
+	hasEditPermission := manage.CheckUserPermission(currentUsername, "EditPermission")
+
+	// Non-editors cannot view details of contests that haven't started yet
+	if !hasEditPermission && contest.StartAt.After(time.Now()) {
+		http.Error(w, "contest has not started yet", http.StatusForbidden)
 		return
 	}
 

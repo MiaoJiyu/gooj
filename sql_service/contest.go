@@ -20,7 +20,7 @@ func ListContests() ([]Contest, error) {
 		return nil, errors.New("db not initialized")
 	}
 	var contests []Contest
-	if err := db.Order("start_at asc").Find(&contests).Error; err != nil {
+	if err := db.Preload("Groups").Order("start_at asc").Find(&contests).Error; err != nil {
 		return nil, err
 	}
 	return contests, nil
@@ -63,6 +63,13 @@ func CreateContest(title, description, createdBy string, startAt, endAt time.Tim
 	if err := db.Create(&contest).Error; err != nil {
 		return Contest{}, err
 	}
+
+	// Set ProblemVisible=true for all problems in this contest
+	// so they become visible when the contest is created
+	if len(problemIDs) > 0 {
+		db.Model(&Problem{}).Where("id IN ?", problemIDs).Update("problem_visible", true)
+	}
+
 	return contest, nil
 }
 

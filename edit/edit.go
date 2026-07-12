@@ -17,6 +17,42 @@ import (
 	"github.com/minicago/gooj/tuack"
 )
 
+// clearTestFiles removes old test files (.in and .ans) from the problem directory
+func clearTestFiles(problemDir string) error {
+	entries, err := os.ReadDir(problemDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() && (hasSuffix(name, ".in") || hasSuffix(name, ".ans")) {
+			if err := os.Remove(filepath.Join(problemDir, name)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// hasSuffix is a helper to check string suffix
+func hasSuffix(s, suffix string) bool {
+	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
+}
+
+// calcScore distributes totalScore evenly across count items, returning the i-th item's share
+// For example: calcScore(100, 3, 0) = 34, calcScore(100, 3, 1) = 33, calcScore(100, 3, 2) = 33
+func calcScore(totalScore, count, index int) int {
+	if count <= 0 {
+		return 0
+	}
+	base := totalScore / count
+	remainder := totalScore % count
+	if index < remainder {
+		return base + 1
+	}
+	return base
+}
+
 func ModifyProblemStatementHandler(w http.ResponseWriter, r *http.Request) {
 	type reqBody struct {
 		ProblemID    string `json:"problem_id"`
@@ -209,6 +245,9 @@ func ImportDataZipHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Define problem directory
+	problemDir := filepath.Join("data", "problem", problemIDStr)
+
 	// Save zip to temp file
 	tempDir, err := os.MkdirTemp("", "datazip-*")
 	if err != nil {
@@ -238,9 +277,9 @@ func ImportDataZipHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer reader.Close()
 
-	testsDir := filepath.Join("data", "problem", problemIDStr, "tests")
-	if err := os.MkdirAll(testsDir, 0755); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create tests dir: %v", err), http.StatusInternalServerError)
+	// Clear old test files in problem directory first
+	if err := clearTestFiles(problemDir); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to clear old test files: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -309,8 +348,9 @@ func ImportDataZipHandler(w http.ResponseWriter, r *http.Request) {
 		OutputFile string `json:"output_file"`
 		Score      int    `json:"score"`
 	}
-	groupCases := make([]int, 0, len(bases))
 	testCases := make([]testCaseConfig, 0, len(bases))
+	// Each test case is its own group
+	testGroups := make([]map[string]interface{}, 0, len(bases))
 
 	for i, base := range bases {
 		pair := pairs[base]
@@ -319,35 +359,34 @@ func ImportDataZipHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		idx := i + 1
 
-		// Write .in
-		inPath := filepath.Join(testsDir, fmt.Sprintf("%d.in", idx))
+		// Write .in directly in problem folder
+		inPath := filepath.Join(problemDir, fmt.Sprintf("%d.in", idx))
 		if err := os.WriteFile(inPath, pair.in, 0644); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to write %s: %v", inPath, err), http.StatusInternalServerError)
 			return
 		}
-		// Write .ans
-		ansPath := filepath.Join(testsDir, fmt.Sprintf("%d.ans", idx))
+		// Write .ans directly in problem folder
+		ansPath := filepath.Join(problemDir, fmt.Sprintf("%d.ans", idx))
 		if err := os.WriteFile(ansPath, pair.ans, 0644); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to write %s: %v", ansPath, err), http.StatusInternalServerError)
 			return
 		}
 
-		groupCases = append(groupCases, idx)
 		testCases = append(testCases, testCaseConfig{
 			InputFile:  fmt.Sprintf("%d.in", idx),
 			OutputFile: fmt.Sprintf("%d.ans", idx),
-			Score:      100,
+			Score:      calcScore(100, len(bases), i),
+		})
+		// Each test case is its own group with evenly distributed score
+		testGroups = append(testGroups, map[string]interface{}{
+			"cases": []int{idx},
+			"score": calcScore(100, len(bases), i),
 		})
 	}
 
-	// Write config.json with single group
+	// Write config.json with one group per test case
 	config := map[string]interface{}{
-		"test_cases": []map[string]interface{}{
-			{
-				"cases": groupCases,
-				"score": 100,
-			},
-		},
+		"test_cases": testGroups,
 	}
 	configPath := filepath.Join("data", "problem", problemIDStr, "config.json")
 	configJSON, _ := json.MarshalIndent(config, "", "  ")
@@ -425,4 +464,206 @@ func SaveTestGroupsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// CreateProblemHandler creates a new problem with optional statement and data zip.
+func CreateProblemHandler(w http.ResponseWriter, r *http.Request) {
+	currentUser := manage.CurrentUsername(r)
+	if !manage.CheckUserPermission(currentUser, "EditPermission") {
+		http.Error(w, "permission denied", http.StatusForbidden)
+		return
+	}
+
+	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	title := r.FormValue("title")
+	statement := r.FormValue("statement")
+
+	if title == "" {
+		http.Error(w, "title is required", http.StatusBadRequest)
+		return
+	}
+
+	// Save problem to database first to get the ID
+	db := sql_service.DB()
+	if db == nil {
+		http.Error(w, "database not initialized", http.StatusInternalServerError)
+		return
+	}
+
+	problem := sql_service.Problem{
+		Title:       title,
+		TestsCount:  0,
+		TimeLimitMs: 1000,
+		MemLimitMB:  512,
+	}
+	if err := db.Create(&problem).Error; err != nil {
+		http.Error(w, fmt.Sprintf("Failed to save problem to database: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Now create directory using the database ID
+	problemDir := filepath.Join("data", "problem", strconv.FormatUint(uint64(problem.ID), 10))
+	if err := os.MkdirAll(problemDir, 0755); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create problem directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Save statement if provided
+	if statement != "" {
+		statementPath := filepath.Join(problemDir, "statement.md")
+		if err := os.WriteFile(statementPath, []byte(statement), 0644); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to write statement: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Handle data zip if provided
+	testCount := 0
+	dataZip, dataZipHeader, err := r.FormFile("data_zip")
+	if err == nil && dataZipHeader != nil {
+		defer dataZip.Close()
+
+		if filepath.Ext(dataZipHeader.Filename) == ".zip" {
+			// Save zip to temp file
+			tempDir, err := os.MkdirTemp("", "datazip-*")
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to create temp dir: %v", err), http.StatusInternalServerError)
+				return
+			}
+			defer os.RemoveAll(tempDir)
+
+			zipPath := filepath.Join(tempDir, "data.zip")
+			dst, err := os.Create(zipPath)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to create temp file: %v", err), http.StatusInternalServerError)
+				return
+			}
+			if _, err := io.Copy(dst, dataZip); err != nil {
+				dst.Close()
+				http.Error(w, fmt.Sprintf("Failed to save zip: %v", err), http.StatusInternalServerError)
+				return
+			}
+			dst.Close()
+
+			// Open and extract
+			reader, err := zip.OpenReader(zipPath)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to open zip: %v", err), http.StatusBadRequest)
+				return
+			}
+			defer reader.Close()
+
+			// Collect .in and .ans files keyed by base name
+			inRE := regexp.MustCompile(`^(.+)\.in$`)
+			ansRE := regexp.MustCompile(`^(.+)\.ans$`)
+			type filePair struct {
+				in  []byte
+				ans []byte
+			}
+			pairs := make(map[string]*filePair)
+
+			for _, f := range reader.File {
+				name := filepath.Base(f.Name)
+				if f.FileInfo().IsDir() {
+					continue
+				}
+				rc, err := f.Open()
+				if err != nil {
+					http.Error(w, fmt.Sprintf("Failed to read %s: %v", name, err), http.StatusInternalServerError)
+					return
+				}
+				content, err := io.ReadAll(rc)
+				rc.Close()
+				if err != nil {
+					http.Error(w, fmt.Sprintf("Failed to read %s: %v", name, err), http.StatusInternalServerError)
+					return
+				}
+
+				if m := inRE.FindStringSubmatch(name); m != nil {
+					base := m[1]
+					if pairs[base] == nil {
+						pairs[base] = &filePair{}
+					}
+					pairs[base].in = content
+				} else if m := ansRE.FindStringSubmatch(name); m != nil {
+					base := m[1]
+					if pairs[base] == nil {
+						pairs[base] = &filePair{}
+					}
+					pairs[base].ans = content
+				}
+			}
+
+			// Sort bases numerically
+			var bases []string
+			for base := range pairs {
+				bases = append(bases, base)
+			}
+			sort.Slice(bases, func(i, j int) bool {
+				vi, _ := strconv.Atoi(bases[i])
+				vj, _ := strconv.Atoi(bases[j])
+				return vi < vj
+			})
+
+			// Write test files, each test case is its own group
+			testGroups := make([]map[string]interface{}, 0, len(bases))
+			for i, base := range bases {
+				pair := pairs[base]
+				if pair == nil {
+					continue
+				}
+				idx := i + 1
+				testCount++
+
+				// Write .in directly in problem folder
+				inPath := filepath.Join(problemDir, fmt.Sprintf("%d.in", idx))
+				if err := os.WriteFile(inPath, pair.in, 0644); err != nil {
+					http.Error(w, fmt.Sprintf("Failed to write %s: %v", inPath, err), http.StatusInternalServerError)
+					return
+				}
+				// Write .ans directly in problem folder
+				ansPath := filepath.Join(problemDir, fmt.Sprintf("%d.ans", idx))
+				if err := os.WriteFile(ansPath, pair.ans, 0644); err != nil {
+					http.Error(w, fmt.Sprintf("Failed to write %s: %v", ansPath, err), http.StatusInternalServerError)
+					return
+				}
+
+				// Each test case is its own group with evenly distributed score
+				testGroups = append(testGroups, map[string]interface{}{
+					"cases": []int{idx},
+					"score": calcScore(100, len(bases), i),
+				})
+			}
+
+			// Write config.json with one group per test case
+			config := map[string]interface{}{
+				"test_cases":   testGroups,
+				"time_limit":   1000,
+				"memory_limit": 512,
+			}
+			configPath := filepath.Join(problemDir, "config.json")
+			configJSON, _ := json.MarshalIndent(config, "", "  ")
+			if err := os.WriteFile(configPath, configJSON, 0644); err != nil {
+				http.Error(w, fmt.Sprintf("Failed to write config.json: %v", err), http.StatusInternalServerError)
+				return
+			}
+
+			// Update problem test count
+			problem.TestsCount = testCount
+			db.Save(&problem)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "success",
+		"problem_id": problem.ID,
+		"title":      title,
+		"test_count": testCount,
+		"message":    "Problem created successfully",
+	})
 }

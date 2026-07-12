@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gorilla/mux"
 
@@ -49,7 +48,6 @@ func ProblemsHandler(w http.ResponseWriter, r *http.Request) {
 
 	currentUser := manage.CurrentUsername(r)
 	canEdit := manage.CheckUserPermission(currentUser, "EditPermission")
-	now := time.Now()
 	db := sql_service.DB()
 	if db == nil {
 		http.Error(w, "database error", http.StatusInternalServerError)
@@ -58,7 +56,7 @@ func ProblemsHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := db.Model(&sql_service.Problem{})
 	if !canEdit {
-		query = query.Where("public_time IS NULL OR public_time <= ?", now)
+		query = query.Where("problem_visible = ?", true)
 	}
 
 	var total int64
@@ -138,8 +136,8 @@ func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currentUser := manage.CurrentUsername(r)
-	if problem.PublicTime != nil && problem.PublicTime.After(time.Now()) && !manage.CheckUserPermission(currentUser, "EditPermission") {
-		http.Error(w, "problem is not public yet", http.StatusForbidden)
+	if !problem.ProblemVisible && !manage.CheckUserPermission(currentUser, "EditPermission") {
+		http.Error(w, "problem is not visible yet", http.StatusForbidden)
 		return
 	}
 
@@ -151,7 +149,7 @@ func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 	stmtBytes, err := os.ReadFile(stmtPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			http.Error(w, "statement not found", http.StatusNotFound)
+			stmtBytes = []byte("# Problem statement not found\n\nPlease contact the administrator.")
 			return
 		}
 		http.Error(w, "internal read error", http.StatusInternalServerError)
@@ -175,23 +173,19 @@ func ProblemDataHandler(w http.ResponseWriter, r *http.Request) {
 		),
 	)
 	_ = md.Convert(stmtBytes, &buf)
-	publicTime := ""
-	if problem.PublicTime != nil {
-		publicTime = problem.PublicTime.Format(time.RFC3339)
-	}
 	out := map[string]interface{}{
 		"id": problem.ID,
 		// "name":           problem.Name,
-		"title":          problem.Title,
-		"description":    problem.Description,
-		"time_limit_ms":  problem.TimeLimitMs,
-		"mem_limit_mb":   problem.MemLimitMB,
-		"tests_count":    problem.TestsCount,
-		"public_time":    publicTime,
-		"test_visible":   problem.TestVisible,
-		"statement":      string(stmtBytes),
-		"statement_html": buf.String(),
-		"config":         cfg,
+		"title":           problem.Title,
+		"description":     problem.Description,
+		"time_limit_ms":   problem.TimeLimitMs,
+		"mem_limit_mb":    problem.MemLimitMB,
+		"tests_count":     problem.TestsCount,
+		"problem_visible": problem.ProblemVisible,
+		"test_visible":    problem.TestVisible,
+		"statement":       string(stmtBytes),
+		"statement_html":  buf.String(),
+		"config":          cfg,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
@@ -215,13 +209,13 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Parse request body
 	type UpdateRequest struct {
-		Name        string `json:"name"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		TimeLimitMs int    `json:"time_limit_ms"`
-		MemLimitMB  int    `json:"mem_limit_mb"`
-		PublicTime  string `json:"public_time"`
-		TestVisible *bool  `json:"test_visible"`
+		Name           string `json:"name"`
+		Title          string `json:"title"`
+		Description    string `json:"description"`
+		TimeLimitMs    int    `json:"time_limit_ms"`
+		MemLimitMB     int    `json:"mem_limit_mb"`
+		ProblemVisible *bool  `json:"problem_visible"`
+		TestVisible    *bool  `json:"test_visible"`
 	}
 
 	var req UpdateRequest
@@ -259,13 +253,8 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 	if req.MemLimitMB > 0 {
 		problem.MemLimitMB = req.MemLimitMB
 	}
-	if req.PublicTime != "" {
-		parsedPublicTime, err := time.Parse(time.RFC3339, req.PublicTime)
-		if err != nil {
-			http.Error(w, "invalid public_time", http.StatusBadRequest)
-			return
-		}
-		problem.PublicTime = &parsedPublicTime
+	if req.ProblemVisible != nil {
+		problem.ProblemVisible = *req.ProblemVisible
 	}
 	if req.TestVisible != nil {
 		problem.TestVisible = *req.TestVisible
@@ -309,21 +298,17 @@ func UpdateProblemHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	publicTime := ""
-	if problem.PublicTime != nil {
-		publicTime = problem.PublicTime.Format(time.RFC3339)
-	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "success",
 		"problem": map[string]interface{}{
 			"id": problem.ID,
 			// "name":          problem.Name,
-			"title":         problem.Title,
-			"description":   problem.Description,
-			"time_limit_ms": problem.TimeLimitMs,
-			"mem_limit_mb":  problem.MemLimitMB,
-			"tests_count":   problem.TestsCount,
-			"public_time":   publicTime,
+			"title":           problem.Title,
+			"description":     problem.Description,
+			"time_limit_ms":   problem.TimeLimitMs,
+			"mem_limit_mb":    problem.MemLimitMB,
+			"tests_count":     problem.TestsCount,
+			"problem_visible": problem.ProblemVisible,
 		},
 	})
 }

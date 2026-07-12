@@ -74,6 +74,9 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/upload_problem", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/upload_problem.html")
 	}).Methods("GET")
+	r.HandleFunc("/create_problem", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/create_problem.html")
+	}).Methods("GET")
 	r.HandleFunc("/edit", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/edit.html")
 	}).Methods("GET")
@@ -125,6 +128,8 @@ func NewRouter() http.Handler {
 
 	// Upload problem endpoint
 	r.HandleFunc("/api/upload_problem", UploadProblemHandler).Methods("POST")
+	// Create problem with statement and data zip
+	r.HandleFunc("/api/create_problem", edit.CreateProblemHandler).Methods("POST")
 
 	// Submission endpoints
 	r.HandleFunc("/submissions", SubmissionsHandler).Methods("GET")

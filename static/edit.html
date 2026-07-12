@@ -211,9 +211,10 @@
               <label>内存限制 (MB)</label>
               <input type="number" id="infoMemLimit" placeholder="MB" />
             </div>
-            <div class="info-item">
-              <label>公开时间</label>
-              <input type="datetime-local" id="infoPublicTime" placeholder="选择公开时间" />
+            <div class="info-item" style="display:flex; align-items:center; gap:8px;">
+              <label style="margin:0;">题目可见</label>
+              <input type="checkbox" id="infoProblemVisible" style="width:auto;" />
+              <span style="font-size:0.85em; color:#666;">关闭时普通用户无法查看此题</span>
             </div>
             <div class="info-item">
               <label>测试点数量</label>
@@ -224,6 +225,11 @@
               <input type="checkbox" id="infoTestVisible" style="width:auto;" />
               <span style="font-size:0.85em; color:#666;">关闭时普通用户看不到AC/WA/TLE等评测结果</span>
             </div>
+          </div>
+          
+          <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ddd;">
+            <button type="button" id="deleteProblemBtn" class="danger" style="padding: 8px 16px;">删除此题</button>
+            <span style="font-size: 0.85em; color: #666; margin-left: 10px;">删除后不可恢复</span>
           </div>
           
           <div class="test-groups" id="testGroupsSection" style="display: none;">
@@ -349,7 +355,7 @@
           document.getElementById('infoTitle').value = data.title || '';
           document.getElementById('infoTimeLimit').value = data.time_limit_ms || '';
           document.getElementById('infoMemLimit').value = data.mem_limit_mb || '';
-          document.getElementById('infoPublicTime').value = data.public_time ? data.public_time.slice(0, 16) : '';
+          document.getElementById('infoProblemVisible').checked = !!data.problem_visible;
           document.getElementById('infoTestsCount').value = data.tests_count || '';
           document.getElementById('infoTestVisible').checked = !!data.test_visible;
           document.getElementById('markdownEditor').value = data.statement || '';
@@ -403,13 +409,12 @@
         const problemID = document.getElementById('problemID').value.trim();
         if (!problemID) return alert('请先加载题目');
         
-        const publicTimeValue = document.getElementById('infoPublicTime').value.trim();
         const updateData = {
           title: document.getElementById('infoTitle').value.trim(),
           description: document.getElementById('markdownEditor').value,
           time_limit_ms: parseInt(document.getElementById('infoTimeLimit').value) || 0,
           mem_limit_mb: parseInt(document.getElementById('infoMemLimit').value) || 0,
-          public_time: publicTimeValue ? new Date(publicTimeValue).toISOString() : '',
+          problem_visible: document.getElementById('infoProblemVisible').checked,
           test_visible: document.getElementById('infoTestVisible').checked
         };
         
@@ -681,6 +686,30 @@
           await loadProblemData(problemID);
         } catch (e) {
           alert('保存失败：' + e.message);
+        }
+      });
+
+      // Delete problem
+      document.getElementById('deleteProblemBtn').addEventListener('click', async () => {
+        const problemID = document.getElementById('infoID').value.trim();
+        if (!problemID) {
+          alert('请先加载题目');
+          return;
+        }
+        if (!confirm('确定要删除此题吗？此操作不可恢复！')) {
+          return;
+        }
+        try {
+          const res = await fetch('/api/delete_problem', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ problem_id: parseInt(problemID) })
+          });
+          if (!res.ok) throw new Error(await res.text());
+          alert('题目删除成功');
+          window.location.href = '/problemlist';
+        } catch (e) {
+          alert('删除失败：' + e.message);
         }
       });
     </script>

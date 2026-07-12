@@ -3,90 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>用户主页</title>
-    <link rel="stylesheet" href="/style.css">
+    <title>用户主页 - Gooj</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/common.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
         .profile-header {
             display: flex;
             align-items: center;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 20px;
-            margin-bottom: 20px;
+            gap: 24px;
+            padding-bottom: 24px;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 24px;
         }
         .avatar {
             width: 80px;
             height: 80px;
-            background: #4CAF50;
+            background: linear-gradient(135deg, #4CAF50, #81C784);
             color: white;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 36px;
-            margin-right: 20px;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
         }
         .user-info h1 {
-            margin: 0 0 10px 0;
-            color: #333;
+            margin: 0 0 8px 0;
+            color: #1f2937;
+            font-size: 28px;
         }
         .user-meta {
             display: flex;
-            gap: 20px;
-            color: #666;
+            gap: 16px;
+            color: #6b7280;
+            font-size: 14px;
+            align-items: center;
         }
-        .rating {
-            font-size: 24px;
-            color: #ff9800;
+        .user-meta .rating {
+            font-size: 20px;
+            color: #f59e0b;
             font-weight: bold;
         }
         .stats {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
-            margin-bottom: 30px;
+            gap: 16px;
+            margin-bottom: 32px;
         }
         .stat-card {
-            background: #f9f9f9;
+            background: #f9fafb;
             padding: 20px;
-            border-radius: 8px;
+            border-radius: 12px;
             text-align: center;
+            border: 1px solid #e5e7eb;
         }
         .stat-value {
-            font-size: 28px;
+            font-size: 32px;
             font-weight: bold;
             color: #4CAF50;
         }
         .stat-label {
-            color: #666;
-            margin-top: 5px;
+            color: #6b7280;
+            margin-top: 4px;
+            font-size: 14px;
         }
         .section {
-            margin-bottom: 30px;
+            margin-bottom: 32px;
         }
         .section h2 {
-            color: #333;
+            color: #1f2937;
             border-left: 4px solid #4CAF50;
-            padding-left: 10px;
-            margin-bottom: 15px;
+            padding-left: 12px;
+            margin-bottom: 16px;
+            font-size: 18px;
         }
         .group-info {
-            background: #f9f9f9;
-            padding: 15px;
-            border-radius: 8px;
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+        }
+        .group-info p {
+            margin: 8px 0;
+            color: #4b5563;
         }
         .problem-list {
             display: flex;
@@ -96,34 +96,88 @@
         .problem-tag {
             background: #e8f5e9;
             color: #4CAF50;
-            padding: 8px 15px;
+            padding: 8px 16px;
             border-radius: 20px;
             font-size: 14px;
             text-decoration: none;
-            transition: background 0.3s;
+            transition: all 0.2s;
         }
         .problem-tag:hover {
             background: #c8e6c9;
+            transform: translateY(-1px);
         }
         .no-data {
-            color: #999;
+            color: #9ca3af;
             font-style: italic;
+            padding: 16px 0;
         }
         .loading {
             text-align: center;
             padding: 20px;
-            color: #666;
+            color: #6b7280;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        thead tr {
+            background: #f3f4f6;
+        }
+        th {
+            padding: 12px 16px;
+            text-align: left;
+            color: #4b5563;
+            font-weight: 600;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e5e7eb;
+            color: #4b5563;
+        }
+        tbody tr:hover {
+            background: #f9fafb;
+        }
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+        a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
-        <div class="container">
-            <nav>
-                <a href="/problemlist">题目列表</a>
-                <a href="/user_profile">用户信息</a>
-                <a href="/contest">比赛</a>
-                <a href="/submissions">提交记录</a>
-            </nav>
+    <div class="page-container">
+      <nav class="navbar">
+        <a href="/problemlist" class="navbar-brand">
+          <span class="logo">G</span>
+          <span>Gooj</span>
+        </a>
+        <div class="navbar-links">
+          <a href="/problemlist">题目列表</a>
+          <a href="/user_profile" class="active">用户信息</a>
+          <a href="/contest">比赛</a>
+          <a href="/submissions">提交记录</a>
+          <a href="/ranking">排行榜</a>
+        </div>
+        <div class="navbar-user">
+          <span class="username" id="navbarUser">加载中...</span>
+          <span class="rating-badge" id="navbarRating">1500</span>
+          <button onclick="logout()">登出</button>
+        </div>
+      </nav>
+
+      <div id="manageUsersOption" style="display:none;margin-bottom:16px">
+        <a href="/manage" class="button primary">管理用户</a>
+      </div>
+
+      <div class="card">
         <div class="profile-header">
             <div class="avatar" id="avatar">?</div>
             <div class="user-info">
@@ -177,6 +231,7 @@
                 <div class="loading">加载中...</div>
             </div>
         </div>
+      </div>
     </div>
 
     <script>

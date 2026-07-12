@@ -66,13 +66,13 @@ type TestResult struct {
 type Problem struct {
 	ID uint `gorm:"primaryKey"`
 	// Name        string `gorm:"uniqueIndex;size:128"`
-	Title       string `gorm:"size:256"`
-	Description string `gorm:"type:text"`
-	TestsCount  int
-	TimeLimitMs int
-	MemLimitMB  int
-	PublicTime  *time.Time `gorm:"index"`
-	TestVisible bool       `gorm:"default:false"` // If false, non-editors cannot see evaluation info (test results, scores, etc.)
+	Title          string `gorm:"size:256"`
+	Description    string `gorm:"type:text"`
+	TestsCount     int
+	TimeLimitMs    int
+	MemLimitMB     int
+	ProblemVisible bool `gorm:"default:false"` // If false, non-editors cannot view the problem until contest starts
+	TestVisible    bool `gorm:"default:false"` // If false, non-editors cannot see evaluation info (test results, scores, etc.)
 }
 
 // Contest represents a contest with an associated problem set and a leaderboard.

@@ -10,8 +10,7 @@ import (
 
 // ProcessStatement renders a tuack statement and handles special syntax
 func ProcessStatement(statement string, problemDir string) (string, error) {
-	// First, handle sample blocks that read from down directory
-	statement = processSamples(statement, problemDir)
+	// Note: sample processing removed - samples should be embedded directly in statement
 
 	// Mapping for Chinese section titles
 	titles := map[string]string{
