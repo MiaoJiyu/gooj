@@ -12,6 +12,7 @@
         <a href="/problemlist">题目列表</a>
         <a href="/user_profile">用户信息</a>
         <a href="/contest">比赛</a>
+        <a href="/ranking">排行榜</a>
         <a href="/submissions">提交记录</a>
       </nav>
       <h1>比赛排行榜</h1>
@@ -19,7 +20,7 @@
         <h2 id="contestName">加载中...</h2>
         <table>
           <thead>
-            <tr><th>排名</th><th>用户名</th><th>总分</th><th>解题数</th></tr>
+            <tr><th>排名</th><th>用户名</th><th>Rating</th><th>总分</th><th>解题数</th></tr>
           </thead>
           <tbody id="leaderboardBody"></tbody>
         </table>
@@ -36,7 +37,8 @@
         body.innerHTML = '';
         rows.forEach((row, idx) => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${idx + 1}</td><td>${row.username}</td><td>${row.score}</td><td>${row.solved}</td>`;
+          const rating = row.rating || 1500;
+          tr.innerHTML = `<td>${idx + 1}</td><td><a href="/user/${encodeURIComponent(row.username)}">${row.username}</a></td><td>${rating}</td><td>${row.total}</td><td>${Object.keys(row.scores || {}).length}</td>`;
           body.appendChild(tr);
         });
       }

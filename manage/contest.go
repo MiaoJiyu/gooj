@@ -19,12 +19,13 @@ func CreateContestHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type reqBody struct {
-		Name        string `json:"name"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		StartAt     string `json:"start_at"`
-		EndAt       string `json:"end_at"`
-		ProblemIDs  []uint `json:"problem_ids"`
+		Name        string   `json:"name"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		StartAt     string   `json:"start_at"`
+		EndAt       string   `json:"end_at"`
+		Groups      []string `json:"groups"`
+		ProblemIDs  []uint   `json:"problem_ids"`
 	}
 	var req reqBody
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -51,7 +52,7 @@ func CreateContestHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contest, err := sql_service.CreateContest(strings.TrimSpace(req.Title), strings.TrimSpace(req.Description), currentUser, startAt, endAt, req.ProblemIDs)
+	contest, err := sql_service.CreateContest(strings.TrimSpace(req.Title), strings.TrimSpace(req.Description), currentUser, startAt, endAt, req.Groups, req.ProblemIDs)
 	if err != nil {
 		http.Error(w, "create contest failed", http.StatusInternalServerError)
 		return

@@ -240,6 +240,81 @@ button.small {
     font-size: 14px;
 }
 
+/* Anchor buttons (styled like <button>) */
+a.button,
+a.btn {
+    display: inline-block;
+    padding: 12px 24px;
+    border-radius: var(--radius-md);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    text-align: center;
+    border: none;
+    box-shadow: var(--shadow-sm);
+}
+
+a.button.primary,
+a.btn.btn-primary {
+    background: var(--primary-color);
+    color: white;
+}
+
+a.button.primary:hover,
+a.btn.btn-primary:hover {
+    background: var(--primary-dark);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+    color: white;
+    text-decoration: none;
+}
+
+a.button.secondary,
+a.btn.btn-secondary {
+    background: white;
+    color: var(--text-primary);
+    border: 2px solid var(--border-color);
+}
+
+a.button.secondary:hover,
+a.btn.btn-secondary:hover {
+    background: var(--bg-secondary);
+    border-color: var(--text-light);
+    text-decoration: none;
+}
+
+a.button.success,
+a.btn.btn-success {
+    background: var(--success-color);
+    color: white;
+}
+
+a.button.success:hover,
+a.btn.btn-success:hover {
+    background: #059669;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+    color: white;
+    text-decoration: none;
+}
+
+a.button.danger,
+a.btn.btn-danger {
+    background: var(--danger-color);
+    color: white;
+}
+
+a.button.danger:hover,
+a.btn.btn-danger:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+    color: white;
+    text-decoration: none;
+}
+
 /* 表格 */
 table {
     width: 100%;

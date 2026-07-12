@@ -41,8 +41,17 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/contest", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/contest.html")
 	}).Methods("GET")
+	r.HandleFunc("/contest/{id}", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/contest_detail.html")
+	}).Methods("GET")
 	r.HandleFunc("/contest/{id}/leaderboard", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/contest_leaderboard.html")
+	}).Methods("GET")
+	r.HandleFunc("/contest_manage", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/contest_manage.html")
+	}).Methods("GET")
+	r.HandleFunc("/ranking", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/rankings.html")
 	}).Methods("GET")
 	r.HandleFunc("/manage", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/manage.html")
@@ -75,6 +84,7 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/api/contests", ListContestsHandler).Methods("GET")
 	r.HandleFunc("/api/contest/{id}", ContestDetailHandler).Methods("GET")
 	r.HandleFunc("/api/contest/{id}/leaderboard", ContestLeaderboardHandler).Methods("GET")
+	r.HandleFunc("/api/rankings", GetRatingLeaderboardHandler).Methods("GET")
 	r.HandleFunc("/api/create_contest", manage.CreateContestHandler).Methods("POST")
 	r.HandleFunc("/api/delete_contest", manage.DeleteContestHandler).Methods("POST")
 	r.HandleFunc("/api/import_users_csv", manage.ImportUsersCSVHandler).Methods("POST")

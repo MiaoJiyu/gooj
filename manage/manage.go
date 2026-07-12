@@ -59,7 +59,7 @@ func CreateGroupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	var req reqBody
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	if req.GroupName == "" || len(req.Permissions) == 0 {
+	if req.GroupName == "" {
 		http.Error(w, "missing fields", http.StatusBadRequest)
 		return
 	}

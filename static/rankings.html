@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>排行榜 - Gooj</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav>
+        <a href="/problemlist">题目列表</a>
+        <a href="/user_profile">用户信息</a>
+        <a href="/contest">比赛</a>
+        <a href="/ranking">排行榜</a>
+        <a href="/submissions">提交记录</a>
+      </nav>
+
+      <div class="card">
+        <h1>Rating 排行榜</h1>
+        <table>
+          <thead>
+            <tr>
+              <th>排名</th>
+              <th>用户名</th>
+              <th>Rating</th>
+              <th>用户组</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboardBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      async function loadRanking() {
+        const res = await fetch('/api/rankings');
+        if (!res.ok) {
+          throw new Error(await res.text());
+        }
+        const data = await res.json();
+        const rows = data.rows || data.users || [];
+        const body = document.getElementById('leaderboardBody');
+        body.innerHTML = '';
+
+        if (!rows.length) {
+          body.innerHTML = '<tr><td colspan="4" style="text-align:center;">暂无用户</td></tr>';
+          return;
+        }
+
+        rows.forEach((row, index) => {
+          const tr = document.createElement('tr');
+          const username = row.Username || row.username || '';
+          const rating = row.Rating || row.rating || 0;
+          const group = row.GroupName || row.group_name || row.Group || '-';
+          tr.innerHTML = `
+            <td>${index + 1}</td>
+            <td><a href="/user/${encodeURIComponent(username)}">${username}</a></td>
+            <td>${rating}</td>
+            <td>${group}</td>
+          `;
+          body.appendChild(tr);
+        });
+      }
+
+      loadRanking();
+    </script>
+  </body>
+</html>

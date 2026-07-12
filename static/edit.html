@@ -230,7 +230,7 @@
 
       // Initialize from URL if problem parameter exists
       window.addEventListener('DOMContentLoaded', () => {
-        const problemParam = getURLParameter('problem');
+        const problemParam = getURLParameter('problem') || getURLParameter('id');
         if (problemParam) {
           document.getElementById('problemID').value = problemParam;
           loadProblemData(problemParam);

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>比赛详情 - Gooj</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+      .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .detail-tile {
+        background: #f8fafc;
+        border: 1px solid #dbeafe;
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .problem-chip {
+        display: inline-block;
+        margin: 6px 8px 6px 0;
+        padding: 8px 12px;
+        background: #eef2ff;
+        border-radius: 999px;
+        color: #3730a3;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <nav>
+        <a href="/problemlist">题目列表</a>
+        <a href="/user_profile">用户信息</a>
+        <a href="/contest">比赛</a>
+        <a href="/ranking">排行榜</a>
+        <a href="/submissions">提交记录</a>
+      </nav>
+
+      <div class="card">
+        <h1 id="contestTitle">比赛详情</h1>
+        <div id="contestDescription" style="margin-bottom: 20px; color: #4b5563;"></div>
+
+        <div class="detail-grid">
+          <div class="detail-tile">
+            <strong>开始时间</strong>
+            <div id="contestStartAt">-</div>
+          </div>
+          <div class="detail-tile">
+            <strong>结束时间</strong>
+            <div id="contestEndAt">-</div>
+          </div>
+          <div class="detail-tile">
+            <strong>创建者</strong>
+            <div id="contestCreatedBy">-</div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <a id="leaderboardLink" class="button secondary">查看排行榜</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>比赛题目</h2>
+        <div id="problemList">加载中...</div>
+      </div>
+    </div>
+
+    <script>
+      const contestId = new URL(location.href).pathname.split('/').filter(Boolean).pop();
+
+      async function loadContest() {
+        const res = await fetch('/api/contest/' + encodeURIComponent(contestId));
+        if (!res.ok) {
+          document.getElementById('problemList').textContent = '加载失败';
+          return;
+        }
+
+        const contest = await res.json();
+        document.getElementById('contestTitle').textContent = contest.title || '比赛详情';
+        document.getElementById('contestDescription').textContent = contest.description || '暂无说明';
+        document.getElementById('contestStartAt').textContent = new Date(contest.start_at).toLocaleString();
+        document.getElementById('contestEndAt').textContent = new Date(contest.end_at).toLocaleString();
+        document.getElementById('contestCreatedBy').textContent = contest.created_by || '-';
+        document.getElementById('leaderboardLink').href = '/contest/' + encodeURIComponent(contestId) + '/leaderboard';
+
+        const problems = contest.problems || [];
+        const problemList = document.getElementById('problemList');
+        if (!problems.length) {
+          problemList.innerHTML = '<p>暂无题目</p>';
+          return;
+        }
+
+        problemList.innerHTML = problems.map(problem => {
+          const id = problem.ID || problem.id || '';
+          const title = problem.Title || problem.title || '题目';
+          return `<a class="problem-chip" href="/problem?id=${encodeURIComponent(id)}">${id}. ${title}</a>`;
+        }).join('');
+      }
+
+      loadContest();
+    </script>
+  </body>
+</html>

@@ -8,7 +8,7 @@ type User struct {
 	Username   string `gorm:"uniqueIndex;size:128"`
 	Password   string
 	Role       string `gorm:"size:32;default:'user'"`                // user, admin, teacher
-	Group      Group  `gorm:"foreignKey:Name;references:GroupName;"` // User group
+	Group      Group  `gorm:"foreignKey:GroupName;references:Name;"` // User group
 	GroupName  string
 	Rating     int `gorm:"default:1500"` // User rating, default 1500
 	CreatedAt  time.Time
@@ -82,14 +82,9 @@ type Contest struct {
 	Description string    `gorm:"type:text"`
 	StartAt     time.Time `gorm:"index"`
 	EndAt       time.Time `gorm:"index"`
-	CreatedBy   string    `gorm:"size:128"`
-	CreatedAt   time.Time
-}
-
-// ContestProblem links a contest to a problem.
-type ContestProblem struct {
-	ID        uint `gorm:"primaryKey"`
-	ContestID uint `gorm:"index"`
-	ProblemID uint `gorm:"index"`
+	Groups      []Group   `gorm:"many2many:contest_groups;"`
+	// Type        string    `gorm:"size:32"` // NOI, IOI etc.
+	Problems  []Problem `gorm:"many2many:contest_problems;"`
+	CreatedBy string    `gorm:"size:128"`
 	CreatedAt time.Time
 }

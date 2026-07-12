@@ -2,9 +2,59 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>比赛 - Gooj</title>
     <link rel="stylesheet" href="/static/style.css" />
+    <style>
+      .contest-grid {
+        display: grid;
+        gap: 16px;
+      }
+      .contest-card {
+        background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+        border: 1px solid #dbeafe;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+      }
+      .contest-card h3 {
+        margin-bottom: 8px;
+      }
+      .contest-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        color: #6b7280;
+        font-size: 14px;
+        margin-bottom: 12px;
+      }
+      .contest-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        background: #eef2ff;
+        color: #3730a3;
+      }
+      .problem-pill {
+        display: inline-block;
+        margin: 4px 8px 4px 0;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #f3f4f6;
+        color: #111827;
+        font-size: 13px;
+      }
+      .contest-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 12px;
+      }
+    </style>
   </head>
   <body>
     <div class="container">
@@ -12,12 +62,15 @@
         <a href="/problemlist">题目列表</a>
         <a href="/user_profile">用户信息</a>
         <a href="/contest">比赛</a>
+        <a href="/ranking">排行榜</a>
         <a href="/submissions">提交记录</a>
       </nav>
-      <h1>比赛界面</h1>
       <div class="card">
-        <h2>比赛列表</h2>
-        <div id="contestList">加载中...</div>
+        <div style="display:flex; justify-content: space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <h1 style="margin:0;">比赛列表</h1>
+          <a href="/ranking" class="button secondary">全球 Rating 排行榜</a>
+        </div>
+        <div id="contestList" class="contest-grid">加载中...</div>
       </div>
     </div>
     <script>
@@ -33,17 +86,28 @@
 
         container.innerHTML = contests.map(contest => {
           const problems = (contest.problems || []).map(problem => {
-            return `<a href="/problem?id=${encodeURIComponent(problem.ID || problem.id || '')}">${problem.Title || problem.Name || '题目'}</a>`;
-          }).join(' · ');
+            const id = problem.ID || problem.id || '';
+            const title = problem.Title || problem.title || '题目';
+            return `<a class="problem-pill" href="/problem?id=${encodeURIComponent(id)}">${id}. ${title}</a>`;
+          }).join('');
           const start = new Date(contest.start_at).toLocaleString();
           const end = new Date(contest.end_at).toLocaleString();
+          const now = Date.now();
+          const status = new Date(contest.end_at).getTime() < now ? '已结束' : new Date(contest.start_at).getTime() > now ? '未开始' : '进行中';
           return `
-            <div class="card" style="margin-top: 12px;">
+            <div class="contest-card">
+              <span class="contest-badge">${status}</span>
               <h3>${contest.title || contest.name}</h3>
-              <p>${contest.description || ''}</p>
-              <p>开始时间：${start} ｜ 结束时间：${end}</p>
-              <p>比赛题目：${problems || '暂无题目'}</p>
-              <p><a href="/contest/${contest.id}/leaderboard" class="button secondary">查看排行榜</a></p>
+              <div class="contest-meta">
+                <span>开始：${start}</span>
+                <span>结束：${end}</span>
+              </div>
+              <p>${contest.description || '暂无比赛说明'}</p>
+              <div>${problems || '<span class="text-muted">暂无题目</span>'}</div>
+              <div class="contest-actions">
+                <a href="/contest/${contest.id}" class="button primary">进入比赛</a>
+                <a href="/contest/${contest.id}/leaderboard" class="button secondary">查看排行榜</a>
+              </div>
             </div>
           `;
         }).join('');

@@ -3,327 +3,73 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>用户管理 - Gooj</title>
+    <title>管理中心 - Gooj</title>
     <link rel="stylesheet" href="/static/style.css" />
+    <style>
+      .shortcut-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+      }
+      .shortcut-card {
+        background: linear-gradient(135deg, #eef2ff, #f8fafc);
+        border: 1px solid #dbeafe;
+        border-radius: 14px;
+        padding: 18px;
+      }
+      .shortcut-card h3 {
+        margin-bottom: 10px;
+      }
+      .shortcut-card p {
+        color: #4b5563;
+        margin-bottom: 16px;
+      }
+    </style>
   </head>
   <body>
     <div class="manage-container">
       <nav>
         <a href="/problemlist">题目列表</a>
-        <a href="/submit">提交页面</a>
-        <a href="/postboard">公告板</a>
+        <a href="/contest">比赛</a>
+        <a href="/ranking">排行榜</a>
         <a href="/">返回首页</a>
       </nav>
-      
-      <div class="card">
-        <h1>题目管理</h1>
-        <table>
-          <thead>
-            <tr>
-              <th>题目ID</th>
-              <th>题目标识</th>
-              <th>题目标题</th>
-              <th>测试用例数</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="problemTable"></tbody>
-        </table>
-      </div>
 
       <div class="card">
-        <h1>用户管理</h1>
-        <table>
-          <thead>
-            <tr>
-              <th>用户名</th>
-              <th>用户组</th>
-              <th>创建者</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="userTable"></tbody>
-        </table>
-      </div>
-
-      <div class="card">
-        <h1>比赛管理</h1>
-        <!-- <div class="form-group">
-          <label>比赛名称</label>
-          <input id="contestName" type="text" placeholder="例如：2026校赛" />
-        </div> -->
-        <div class="form-group">
-          <label>比赛标题</label>
-          <input id="contestTitle" type="text" placeholder="比赛标题" />
+        <h1>管理中心</h1>
+        <div class="shortcut-grid">
+          <div class="shortcut-card">
+            <h3>比赛管理</h3>
+            <p>独立创建、删除、查看比赛，进入比赛详情页与排行榜页。</p>
+            <a href="/contest_manage" class="button primary">打开比赛管理</a>
+          </div>
+          <div class="shortcut-card">
+            <h3>用户管理</h3>
+            <p>审核审批、批量导入、重置密码与删除用户。</p>
+            <a href="/manage_users" class="button secondary">打开用户管理</a>
+          </div>
+          <div class="shortcut-card">
+            <h3>题目编辑</h3>
+            <p>直接通过题目 ID 加载题面、测试数据与 metadata。</p>
+            <a href="/edit" class="button secondary">打开题目编辑</a>
+          </div>
+          <div class="shortcut-card">
+            <h3>题目上传</h3>
+            <p>上传新的题目包并导入测试数据。</p>
+            <a href="/upload_problem" class="button secondary">上传题目</a>
+          </div>
+          <div class="shortcut-card">
+            <h3>用户组</h3>
+            <p>创建用户组并设置权限。</p>
+            <a href="/create_group" class="button secondary">创建用户组</a>
+          </div>
+          <div class="shortcut-card">
+            <h3>新增用户</h3>
+            <p>直接创建新账号并分配用户组。</p>
+            <a href="/create_user" class="button success">创建用户</a>
+          </div>
         </div>
-        <div class="form-group">
-          <label>比赛说明</label>
-          <textarea id="contestDescription" rows="3" placeholder="比赛说明"></textarea>
-        </div>
-        <div class="form-group">
-          <label>开始时间</label>
-          <input id="contestStartAt" type="datetime-local" />
-        </div>
-        <div class="form-group">
-          <label>结束时间</label>
-          <input id="contestEndAt" type="datetime-local" />
-        </div>
-        <div class="form-group">
-          <label>题目编号（逗号分隔）</label>
-          <input id="contestProblemIDs" type="text" placeholder="例如：1,2,3" />
-        </div>
-        <div class="actions">
-          <button id="createContest" class="success">创建比赛</button>
-        </div>
-        <table>
-          <thead>
-            <tr><th>比赛</th><th>时间</th><th>操作</th></tr>
-          </thead>
-          <tbody id="contestTable"></tbody>
-        </table>
-      </div>
-
-      <div class="card">
-        <h2>管理操作</h2>
-        <div class="actions">
-          <button id="createUser" class="success">创建用户</button>
-          <button id="createGroup" class="primary">创建用户组</button>
-          <button id="uploadProblem" class="secondary">上传题目</button>
-          <button id="manageUsers" class="secondary">用户审核</button>
-          <button id="importUsers" class="secondary">批量导入用户</button>
-        </div>
-        <input type="file" id="csvImportFile" accept=".csv" style="display:none" />
       </div>
     </div>
-
-    <script>
-      async function postJSON(url, obj) {
-        const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(obj)});
-        if (!res.ok) throw new Error(await res.text());
-        return await res.json();
-      }
-
-      async function getJSON(url) {
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(await res.text());
-        return await res.json();
-      }
-
-      async function loadProblems() {
-        try {
-          const data = await getJSON('/problems?page=1&per=100');
-          const problems = data.problems || [];
-          const tbody = document.getElementById('problemTable');
-          tbody.innerHTML = '';
-          problems.forEach(problem => {
-            const tr = document.createElement('tr');
-            const problemId = problem.ID || problem.id || '';
-            const title = problem.Title || problem.title || '';
-            const testsCount = problem.TestsCount || problem.testsCount || 0;
-            tr.innerHTML = `
-              <td>${problemId}</td>
-              <td>${name}</td>
-              <td>${title}</td>
-              <td>${testsCount}</td>
-              <td>
-                <button onclick="deleteProblem(${problemId}, '${name}')">删除题目</button>
-              </td>
-            `;
-            tbody.appendChild(tr);
-          });
-        } catch (e) {
-          console.error('加载题目失败:', e);
-        }
-      }
-
-      async function deleteProblem(problemId, problemName) {
-        if (!confirm(`确定要删除题目 ${problemName} (ID: ${problemId}) 吗？此操作不可恢复。`)) return;
-        try {
-          await postJSON('/api/delete_problem', { problem_id: problemId });
-          alert('题目已删除');
-          loadProblems();
-        } catch (e) {
-          alert('删除题目失败: ' + e.message);
-        }
-      }
-
-      async function loadUsers() {
-        try {
-          const res = await fetch('/api/users');
-          if (!res.ok) {
-            const errorText = await res.text();
-            console.error('加载用户失败:', res.status, errorText);
-            alert('加载用户失败: ' + (errorText || res.statusText));
-            return;
-          }
-          const data = await res.json();
-          
-          // data 结构 {total: 10, users: [...]}
-          const users = data.users || [];
-          const total = data.total || 0;
-          
-          const tbody = document.getElementById('userTable');
-          tbody.innerHTML = '';
-          
-          if (users.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">暂无用户</td></tr>';
-            return;
-          }
-          
-          users.forEach(user => {
-            const tr = document.createElement('tr');
-            // JSON from Go exports fields with capitalized names (Username, GroupName, CreatedBy)
-            const username = user.Username || user.username || '';
-            const groupName = user.GroupName || (user.Group && (user.Group.Name || user.Group.name)) || '';
-            const createdBy = user.CreatedBy || user.createdBy || '';
-            tr.innerHTML = `
-              <td>${username}</td>
-              <td>${groupName}</td>
-              <td>${createdBy}</td>
-              <td>
-                <button onclick="resetPassword('${username}')">重置密码</button>
-                <button onclick="deleteUser('${username}')">删除用户</button>
-              </td>
-            `;
-            tbody.appendChild(tr);
-          });
-        } catch (error) {
-          console.error('加载用户时发生错误:', error);
-          alert('加载用户时发生错误: ' + error.message);
-        }
-      }
-
-      async function resetPassword(username) {
-        if (!confirm(`确定要重置用户 ${username} 的密码吗？`)) return;
-        try {
-          const res = await postJSON('/api/reset_password', { username });
-          alert(`密码已重置，新密码: ${res.password}`);
-        } catch (e) {
-          alert('重置密码失败: ' + e.message);
-        }
-      }
-
-      async function deleteUser(username) {
-        if (!confirm(`确定要删除用户 ${username} 吗？此操作不可恢复。`)) return;
-        try {
-          await postJSON('/api/delete_user', { username });
-          alert('用户已删除');
-          loadUsers();
-        } catch (e) {
-          alert('删除用户失败: ' + e.message);
-        }
-      }
-
-      async function loadContests() {
-        try {
-          const data = await getJSON('/api/contests');
-          const contests = data.contests || [];
-          const tbody = document.getElementById('contestTable');
-          tbody.innerHTML = '';
-          contests.forEach(contest => {
-            const tr = document.createElement('tr');
-            const start = new Date(contest.start_at).toLocaleString();
-            const end = new Date(contest.end_at).toLocaleString();
-            tr.innerHTML = `
-              <td>${contest.title || contest.name}</td>
-              <td>${start} ~ ${end}</td>
-              <td>
-                <a href="/contest/${contest.id}/leaderboard" class="button secondary">排行榜</a>
-                <button onclick="deleteContest(${contest.id})">删除</button>
-              </td>
-            `;
-            tbody.appendChild(tr);
-          });
-        } catch (e) {
-          console.error('加载比赛失败:', e);
-        }
-      }
-
-      async function createContest() {
-        const name = document.getElementById('contestName').value.trim();
-        const title = document.getElementById('contestTitle').value.trim();
-        const description = document.getElementById('contestDescription').value.trim();
-        const startAt = document.getElementById('contestStartAt').value;
-        const endAt = document.getElementById('contestEndAt').value;
-        const problemIDs = document.getElementById('contestProblemIDs').value.trim();
-        if (!title || !startAt || !endAt) {
-          return alert('请填写比赛标题和时间');
-        }
-        const ids = problemIDs ? problemIDs.split(',').map(v => Number(v.trim())).filter(Boolean) : [];
-        try {
-          await postJSON('/api/create_contest', {
-            name,
-            title,
-            description,
-            start_at: new Date(startAt).toISOString(),
-            end_at: new Date(endAt).toISOString(),
-            problem_ids: ids
-          });
-          alert('比赛创建成功');
-          loadContests();
-        } catch (e) {
-          alert('创建比赛失败: ' + e.message);
-        }
-      }
-
-      async function deleteContest(id) {
-        if (!confirm('确定要删除该比赛吗？')) return;
-        try {
-          await postJSON('/api/delete_contest', { contest_id: id });
-          alert('比赛已删除');
-          loadContests();
-        } catch (e) {
-          alert('删除比赛失败: ' + e.message);
-        }
-      }
-
-      async function importUsersCsv() {
-        const fileInput = document.getElementById('csvImportFile');
-        if (!fileInput.files.length) {
-          return alert('请选择 CSV 文件');
-        }
-        const form = new FormData();
-        form.append('csv', fileInput.files[0]);
-        const res = await fetch('/api/import_users_csv', { method: 'POST', body: form });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-        alert(`已成功导入 ${data.imported} 个用户`);
-        loadUsers();
-      }
-
-      document.getElementById('createUser').addEventListener('click', () => {
-        location.href = '/create_user';
-      });
-
-      document.getElementById('createGroup').addEventListener('click', () => {
-        location.href = '/create_group';
-      });
-
-      document.getElementById('uploadProblem').addEventListener('click', () => {
-        location.href = '/upload_problem';
-      });
-
-      document.getElementById('manageUsers').addEventListener('click', () => {
-        location.href = '/manage_users';
-      });
-
-      document.getElementById('importUsers').addEventListener('click', () => {
-        document.getElementById('csvImportFile').click();
-      });
-
-      document.getElementById('csvImportFile').addEventListener('change', async () => {
-        try {
-          await importUsersCsv();
-        } catch (e) {
-          alert('导入失败: ' + e.message);
-        }
-      });
-
-      document.getElementById('createContest').addEventListener('click', createContest);
-
-      loadUsers();
-      loadProblems();
-      loadContests();
-    </script>
   </body>
 </html>

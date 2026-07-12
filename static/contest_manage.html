@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>比赛管理 - Gooj</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+      .manage-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      .stat-tile {
+        background: linear-gradient(135deg, #eef2ff, #f8fafc);
+        border: 1px solid #dbeafe;
+        border-radius: 12px;
+        padding: 16px;
+      }
+      .stat-tile strong {
+        display: block;
+        font-size: 24px;
+        margin-bottom: 6px;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 16px;
+      }
+      .full-width {
+        grid-column: 1 / -1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="manage-container">
+      <nav>
+        <a href="/problemlist">题目列表</a>
+        <a href="/contest">比赛</a>
+        <a href="/ranking">排行榜</a>
+        <a href="/manage">返回管理</a>
+      </nav>
+
+      <h1>比赛管理</h1>
+
+      <div class="manage-grid">
+        <div class="stat-tile">
+          <strong id="contestCount">0</strong>
+          <span>比赛总数</span>
+        </div>
+        <div class="stat-tile">
+          <strong id="activeContestCount">0</strong>
+          <span>当前可参加</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>创建比赛</h2>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>比赛标题</label>
+            <input id="contestTitle" type="text" placeholder="例如：2026 校赛" />
+          </div>
+          <div class="form-group">
+            <label>开始时间</label>
+            <input id="contestStartAt" type="datetime-local" />
+          </div>
+          <div class="form-group">
+            <label>结束时间</label>
+            <input id="contestEndAt" type="datetime-local" />
+          </div>
+          <div class="form-group full-width">
+            <label>比赛说明</label>
+            <textarea id="contestDescription" rows="4" placeholder="输入比赛说明"></textarea>
+          </div>
+          <div class="form-group full-width">
+            <label>题目编号（逗号分隔）</label>
+            <input id="contestProblemIDs" type="text" placeholder="例如：1,2,3" />
+          </div>
+        </div>
+        <div class="actions">
+          <button id="createContest" class="success">创建比赛</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>比赛列表</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>标题</th>
+              <th>时间</th>
+              <th>题目数</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="contestTable"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      async function postJSON(url, obj) {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(obj) });
+        if (!res.ok) throw new Error(await res.text());
+        return await res.json();
+      }
+
+      async function getJSON(url) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(await res.text());
+        return await res.json();
+      }
+
+      function formatRange(startAt, endAt) {
+        const start = new Date(startAt).toLocaleString();
+        const end = new Date(endAt).toLocaleString();
+        return `${start} ~ ${end}`;
+      }
+
+      async function loadContests() {
+        try {
+          const data = await getJSON('/api/contests');
+          const contests = data.contests || [];
+          const tbody = document.getElementById('contestTable');
+          tbody.innerHTML = '';
+
+          document.getElementById('contestCount').textContent = String(contests.length);
+          document.getElementById('activeContestCount').textContent = String(contests.filter(c => new Date(c.end_at) > new Date()).length);
+
+          if (contests.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">暂无比赛</td></tr>';
+            return;
+          }
+
+          contests.forEach(contest => {
+            const tr = document.createElement('tr');
+            const problemCount = Array.isArray(contest.problems) ? contest.problems.length : 0;
+            tr.innerHTML = `
+              <td>${contest.title || contest.name || ''}</td>
+              <td>${formatRange(contest.start_at, contest.end_at)}</td>
+              <td>${problemCount}</td>
+              <td>
+                <a href="/contest/${contest.id}" class="button secondary">进入比赛</a>
+                <a href="/contest/${contest.id}/leaderboard" class="button secondary">排行榜</a>
+                <button class="danger" onclick="deleteContest(${contest.id})">删除</button>
+              </td>
+            `;
+            tbody.appendChild(tr);
+          });
+        } catch (e) {
+          console.error('加载比赛失败:', e);
+          alert('加载比赛失败: ' + e.message);
+        }
+      }
+
+      async function createContest() {
+        const title = document.getElementById('contestTitle').value.trim();
+        const description = document.getElementById('contestDescription').value.trim();
+        const startAt = document.getElementById('contestStartAt').value;
+        const endAt = document.getElementById('contestEndAt').value;
+        const problemIDs = document.getElementById('contestProblemIDs').value.trim();
+
+        if (!title || !startAt || !endAt) {
+          return alert('请填写比赛标题与时间');
+        }
+
+        const ids = problemIDs ? problemIDs.split(',').map(v => Number(v.trim())).filter(Boolean) : [];
+
+        try {
+          await postJSON('/api/create_contest', {
+            name: title,
+            title,
+            description,
+            start_at: new Date(startAt).toISOString(),
+            end_at: new Date(endAt).toISOString(),
+            problem_ids: ids
+          });
+          alert('比赛创建成功');
+          document.getElementById('contestTitle').value = '';
+          document.getElementById('contestDescription').value = '';
+          document.getElementById('contestStartAt').value = '';
+          document.getElementById('contestEndAt').value = '';
+          document.getElementById('contestProblemIDs').value = '';
+          loadContests();
+        } catch (e) {
+          alert('创建比赛失败: ' + e.message);
+        }
+      }
+
+      async function deleteContest(id) {
+        if (!confirm('确定要删除该比赛吗？')) return;
+        try {
+          await postJSON('/api/delete_contest', { contest_id: id });
+          alert('比赛已删除');
+          loadContests();
+        } catch (e) {
+          alert('删除比赛失败: ' + e.message);
+        }
+      }
+
+      document.getElementById('createContest').addEventListener('click', createContest);
+      loadContests();
+    </script>
+  </body>
+</html>
