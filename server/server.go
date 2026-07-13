@@ -92,9 +92,9 @@ func StartServer(isbackground bool) {
 		log.Println("Judge service disabled")
 	}
 
-	// Start background rating calculator
-	StartRatingCalculator()
-	log.Println("Rating calculator started")
+	// Start background services (contest starter + rating calculator)
+	StartBackgroundServices()
+	log.Println("Background services started")
 
 	manage.Init()
 	cmdChan := make(chan string)
@@ -105,26 +105,42 @@ func StartServer(isbackground bool) {
 	shutdownChan <- 0
 }
 
-// StartRatingCalculator starts a background goroutine that checks for ended contests
-// and automatically calculates rating changes for participants
-func StartRatingCalculator() {
+// StartBackgroundServices starts a background goroutine that periodically:
+// 1. Reveals problems when contests begin
+// 2. Calculates rating when contests end
+func StartBackgroundServices() {
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 
 		for {
 			<-ticker.C
-			contests, err := sql_service.GetEndedContestsWithoutRating()
+
+			// 1. Reveal problems for started contests
+			contests, err := sql_service.GetStartedContestsWithoutReveal()
 			if err != nil {
-				log.Printf("Rating calculator: failed to get ended contests: %v", err)
-				continue
+				log.Printf("Background service: failed to get started contests: %v", err)
+			} else {
+				for _, contest := range contests {
+					if err := sql_service.RevealContestProblems(contest.ID); err != nil {
+						log.Printf("Background service: failed to reveal problems for contest %d: %v", contest.ID, err)
+					} else {
+						log.Printf("Background service: revealed problems for contest %d (%s)", contest.ID, contest.Title)
+					}
+				}
 			}
 
-			for _, contest := range contests {
-				if err := sql_service.CalculateContestRating(contest.ID); err != nil {
-					log.Printf("Rating calculator: failed to calculate rating for contest %d: %v", contest.ID, err)
-				} else {
-					log.Printf("Rating calculator: calculated ratings for contest %d (%s)", contest.ID, contest.Title)
+			// 2. Calculate ratings for ended contests
+			contests, err = sql_service.GetEndedContestsWithoutRating()
+			if err != nil {
+				log.Printf("Background service: failed to get ended contests: %v", err)
+			} else {
+				for _, contest := range contests {
+					if err := sql_service.CalculateContestRating(contest.ID); err != nil {
+						log.Printf("Background service: failed to calculate rating for contest %d: %v", contest.ID, err)
+					} else {
+						log.Printf("Background service: calculated ratings for contest %d (%s)", contest.ID, contest.Title)
+					}
 				}
 			}
 		}

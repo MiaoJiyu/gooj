@@ -82,8 +82,8 @@ func CheckUserPermission(username string, permission string) bool {
 		return false
 	}
 
-	// Check if Group is loaded
-	if user.Group.Name == "" {
+	// Check if Group is loaded and not nil/empty
+	if user.Group.ID == 0 && user.Group.Name == "" {
 		return false
 	}
 

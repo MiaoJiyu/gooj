@@ -56,6 +56,18 @@ func CreateUserWithGroup(username, password, group, createdBy string) error {
 	if db == nil {
 		return errors.New("db not initialized")
 	}
+	// Auto-create group if it doesn't exist
+	var g Group
+	if err := db.Where("name = ?", group).First(&g).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			g = Group{Name: group, CreatedBy: createdBy}
+			if err := db.Create(&g).Error; err != nil {
+				return err
+			}
+		} else {
+			return err
+		}
+	}
 	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err

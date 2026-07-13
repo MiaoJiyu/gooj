@@ -64,12 +64,6 @@ func CreateContest(title, description, createdBy string, startAt, endAt time.Tim
 		return Contest{}, err
 	}
 
-	// Set ProblemVisible=true for all problems in this contest
-	// so they become visible when the contest is created
-	if len(problemIDs) > 0 {
-		db.Model(&Problem{}).Where("id IN ?", problemIDs).Update("problem_visible", true)
-	}
-
 	return contest, nil
 }
 
@@ -90,6 +84,18 @@ func DeleteContest(id uint) error {
 		return err
 	}
 	return db.Delete(&Contest{}, id).Error
+}
+
+// RevealContestProblems sets ProblemVisible=true for all problems in a contest.
+// Called when a contest starts to make its problems visible.
+func RevealContestProblems(contestID uint) error {
+	if db == nil {
+		return errors.New("db not initialized")
+	}
+	return db.Model(&Problem{}).
+		Joins("JOIN contest_problems ON contest_problems.problem_id = problems.id").
+		Where("contest_problems.contest_id = ?", contestID).
+		Update("problem_visible", true).Error
 }
 
 // ListContestProblems returns all problems linked to a contest.

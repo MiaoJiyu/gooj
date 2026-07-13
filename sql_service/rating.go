@@ -246,3 +246,26 @@ func GetEndedContestsWithoutRating() ([]Contest, error) {
 
 	return contests, nil
 }
+
+// GetStartedContestsWithoutReveal returns contests that have started but problems are not yet visible
+func GetStartedContestsWithoutReveal() ([]Contest, error) {
+	if db == nil {
+		return nil, errors.New("db not initialized")
+	}
+
+	now := time.Now()
+	var contests []Contest
+
+	// Find contests that have started but still have hidden problems
+	// A contest needs reveal if it has started AND has at least one problem with problem_visible=false
+	if err := db.Where("start_at <= ?", now).
+		Joins("JOIN contest_problems ON contest_problems.contest_id = contests.id").
+		Joins("JOIN problems ON problems.id = contest_problems.problem_id").
+		Where("problems.problem_visible = ?", false).
+		Group("contests.id").
+		Find(&contests).Error; err != nil {
+		return nil, err
+	}
+
+	return contests, nil
+}

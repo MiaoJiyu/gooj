@@ -22,6 +22,9 @@ type UserCSVImportRow struct {
 
 // ParseUserCSVImport parses a CSV payload with headers: username,group,password.
 func ParseUserCSVImport(data []byte) ([]UserCSVImportRow, error) {
+	// Strip UTF-8 BOM if present
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+
 	r := csv.NewReader(bytes.NewReader(data))
 	r.TrimLeadingSpace = true
 	r.FieldsPerRecord = -1
@@ -102,18 +105,20 @@ func ImportUsersCSVHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	imported := 0
+	var lastErr error
 	for _, row := range rows {
 		if err := sql_service.CreateUserWithGroup(row.Username, row.Password, row.GroupName, creator); err != nil {
+			lastErr = err
 			break
 		}
 		imported++
 	}
 	if imported == 0 {
-		http.Error(w, "failed to import any users", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("failed to import any users: %v", lastErr), http.StatusInternalServerError)
 		return
 	}
 	if imported != len(rows) {
-		http.Error(w, fmt.Sprintf("import partially failed after %d rows", imported), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("import partially failed after %d rows: %v", imported, lastErr), http.StatusInternalServerError)
 		return
 	}
 

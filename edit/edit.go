@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/minicago/gooj/manage"
 	"github.com/minicago/gooj/sql_service"
@@ -37,6 +38,35 @@ func clearTestFiles(problemDir string) error {
 // hasSuffix is a helper to check string suffix
 func hasSuffix(s, suffix string) bool {
 	return len(s) >= len(suffix) && s[len(s)-len(suffix):] == suffix
+}
+
+// isPathSafe checks if a path is safe from directory traversal attacks.
+// It ensures the resolved path is within the expected base directory.
+func isPathSafe(baseDir, userPath string) bool {
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return false
+	}
+	absUserPath, err := filepath.Abs(filepath.Join(baseDir, userPath))
+	if err != nil {
+		return false
+	}
+	// Ensure the resolved path starts with the base directory
+	return strings.HasPrefix(absUserPath, absBase)
+}
+
+// validateProblemID checks if a problem ID is safe to use in paths
+func validateProblemID(problemID string) bool {
+	// Problem ID must be a valid number (positive integer)
+	id, err := strconv.Atoi(problemID)
+	if err != nil || id <= 0 {
+		return false
+	}
+	// Additional check: ensure no path traversal attempts
+	if strings.ContainsAny(problemID, "/\\..") {
+		return false
+	}
+	return true
 }
 
 // calcScore distributes totalScore evenly across count items, returning the i-th item's share
@@ -68,7 +98,17 @@ func ModifyProblemStatementHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing fields", http.StatusBadRequest)
 		return
 	}
-	statementPath := filepath.Join("data", "problem", req.ProblemID, "statement.md")
+	// Validate problem ID to prevent path traversal
+	if !validateProblemID(req.ProblemID) {
+		http.Error(w, "invalid problem id", http.StatusBadRequest)
+		return
+	}
+	baseDir := filepath.Join("data", "problem")
+	if !isPathSafe(baseDir, req.ProblemID) {
+		http.Error(w, "invalid problem path", http.StatusBadRequest)
+		return
+	}
+	statementPath := filepath.Join(baseDir, req.ProblemID, "statement.md")
 	if err := os.WriteFile(statementPath, []byte(req.NewStatement), 0644); err != nil {
 		http.Error(w, "failed to modify statement", http.StatusInternalServerError)
 		return
@@ -90,8 +130,18 @@ func AddTestDataHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing fields", http.StatusBadRequest)
 		return
 	}
-	inputPath := filepath.Join("data", "problem", req.ProblemID, filepath.Join("tests", fmt.Sprintf("%d.in", req.TestIndex)))
-	outputPath := filepath.Join("data", "problem", req.ProblemID, filepath.Join("tests", fmt.Sprintf("%d.out", req.TestIndex)))
+	// Validate problem ID to prevent path traversal
+	if !validateProblemID(req.ProblemID) {
+		http.Error(w, "invalid problem id", http.StatusBadRequest)
+		return
+	}
+	baseDir := filepath.Join("data", "problem", req.ProblemID, "tests")
+	if !isPathSafe(filepath.Join("data", "problem"), req.ProblemID) {
+		http.Error(w, "invalid problem path", http.StatusBadRequest)
+		return
+	}
+	inputPath := filepath.Join(baseDir, fmt.Sprintf("%d.in", req.TestIndex))
+	outputPath := filepath.Join(baseDir, fmt.Sprintf("%d.out", req.TestIndex))
 	if err := os.WriteFile(inputPath, []byte(req.InputData), 0644); err != nil {
 		http.Error(w, "failed to add input data", http.StatusInternalServerError)
 		return
