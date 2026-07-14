@@ -174,6 +174,135 @@
       .form-actions button {
         flex: 1;
       }
+      /* Test points list styles */
+      .test-points-section {
+        margin-top: 15px;
+        background: white;
+        padding: 15px;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+      }
+      .test-points-section h4 {
+        margin-top: 0;
+        margin-bottom: 10px;
+        color: #333;
+      }
+      .test-points-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9em;
+      }
+      .test-points-table th,
+      .test-points-table td {
+        padding: 8px 10px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+      }
+      .test-points-table th {
+        background: #f5f5f5;
+        font-weight: 500;
+        color: #666;
+      }
+      .test-points-table tr:hover {
+        background: #f9f9f9;
+      }
+      .test-points-table select {
+        padding: 4px 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      .group-scores-summary {
+        margin-top: 15px;
+        background: #f0f7ff;
+        padding: 12px;
+        border-radius: 4px;
+        border: 1px solid #d0e3ff;
+      }
+      .group-scores-summary h5 {
+        margin: 0 0 8px 0;
+        color: #333;
+        font-size: 0.95em;
+      }
+      .group-scores-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .group-score-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: white;
+        padding: 4px 10px;
+        border-radius: 4px;
+        border: 1px solid #ccc;
+        font-size: 0.85em;
+      }
+      .group-score-tag .group-label {
+        color: #666;
+      }
+      .group-score-tag .score-value {
+        font-weight: 600;
+        color: #4a90d9;
+      }
+      .test-group-item {
+        background: #f9f9f9;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      .test-group-item .group-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .test-group-item .group-cases {
+        color: #666;
+        font-size: 0.85em;
+        margin-bottom: 8px;
+      }
+      .test-group-item .group-actions {
+        display: flex;
+        gap: 5px;
+      }
+      .test-group-item .group-actions button {
+        font-size: 0.8em;
+        padding: 3px 8px;
+      }
+      .add-group-form {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px dashed #ddd;
+      }
+      .add-group-form input {
+        padding: 6px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      .add-case-form {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+        margin-top: 8px;
+      }
+      .available-cases {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 5px;
+      }
+      .case-tag {
+        background: #e3f2fd;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-size: 0.85em;
+      }
     </style>
   </head>
   <body>
@@ -234,14 +363,38 @@
           
           <div class="test-groups" id="testGroupsSection" style="display: none;">
             <h4>数据分组管理</h4>
-            <div id="testGroupsList"></div>
+            
+            <!-- Test Points List -->
+            <div class="test-points-section" id="testPointsSection">
+              <h4>测试点列表</h4>
+              <table class="test-points-table" id="testPointsTable">
+                <thead>
+                  <tr>
+                    <th>测试点 ID</th>
+                    <th>所属分组</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="testPointsBody">
+                </tbody>
+              </table>
+            </div>
+            
+            <!-- Group Scores Summary -->
+            <div class="group-scores-summary" id="groupScoresSummary">
+              <h5>分组分数概览</h5>
+              <div class="group-scores-list" id="groupScoresList"></div>
+            </div>
+            
+            <!-- Existing Group Management -->
+            <div id="testGroupsList" style="margin-top: 15px;"></div>
             <div class="add-group-form">
               <input type="number" id="newGroupScore" placeholder="分组分数" min="0" style="width: 80px;" />
               <button type="button" id="addGroupBtn" class="info">新增分组</button>
               <button type="button" id="saveGroupsBtn" class="success">保存分组</button>
             </div>
             <div style="margin-top: 10px; font-size: 0.85em; color: #666;">
-              提示：点击"新增分组"添加新分组，使用分组内的输入框添加测试点
+              提示：点击"新增分组"添加新分组，使用分组内的输入框添加测试点；在上方表格中可修改测试点的分组
             </div>
           </div>
         </div>
@@ -586,9 +739,29 @@
 
       // Test groups management
       let testGroups = [];
+      let totalTestsCount = 0;
+      // Map from test case ID to its group index
+      let testCaseToGroup = {};
 
       function renderTestGroups(groups, totalTests) {
         testGroups = groups.map(g => ({ cases: g.cases || [], score: g.score || 0 }));
+        totalTestsCount = totalTests;
+        
+        // Build testCaseToGroup map
+        testCaseToGroup = {};
+        testGroups.forEach((group, idx) => {
+          (group.cases || []).forEach(caseId => {
+            testCaseToGroup[caseId] = idx;
+          });
+        });
+        
+        // Render test points table
+        renderTestPointsTable();
+        
+        // Render group scores summary
+        renderGroupScoresSummary();
+        
+        // Render existing group management UI
         const container = document.getElementById('testGroupsList');
         container.innerHTML = '';
 
@@ -624,7 +797,7 @@
               if (!testGroups[idx].cases.includes(caseId)) {
                 testGroups[idx].cases.push(caseId);
                 testGroups[idx].cases.sort((a, b) => a - b);
-                renderTestGroups(testGroups, totalTests);
+                renderTestGroups(testGroups, totalTestsCount);
               }
               input.value = '';
             }
@@ -636,7 +809,7 @@
             const idx = parseInt(btn.dataset.groupIndex);
             if (confirm(`确定删除分组 ${idx + 1}？`)) {
               testGroups.splice(idx, 1);
-              renderTestGroups(testGroups, totalTests);
+              renderTestGroups(testGroups, totalTestsCount);
             }
           });
         });
@@ -646,17 +819,106 @@
             const groupDiv = input.closest('.test-group-item');
             const idx = Array.from(document.querySelectorAll('.test-group-item')).indexOf(groupDiv);
             testGroups[idx].score = parseInt(input.value) || 0;
+            // Update the summary display
+            renderGroupScoresSummary();
           });
         });
       }
+      
+      function renderTestPointsTable() {
+        const tbody = document.getElementById('testPointsBody');
+        tbody.innerHTML = '';
+        
+        if (totalTestsCount === 0) {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td colspan="3" style="text-align: center; color: #666;">暂无测试点</td>';
+          tbody.appendChild(tr);
+          return;
+        }
+        
+        for (let i = 1; i <= totalTestsCount; i++) {
+          const currentGroup = testCaseToGroup[i] !== undefined ? testCaseToGroup[i] : -1;
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>测试点 ${i}</td>
+            <td>
+              <select class="test-point-group-select" data-test-id="${i}">
+                <option value="-1">未分组</option>
+                ${testGroups.map((g, idx) => 
+                  `<option value="${idx}" ${currentGroup === idx ? 'selected' : ''}>分组 ${idx + 1} (${g.cases.length}个点)</option>`
+                ).join('')}
+              </select>
+            </td>
+            <td>
+              <button type="button" class="info" style="padding: 2px 8px; font-size: 0.85em;" onclick="removeTestFromGroup(${i})">从当前组移除</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        }
+        
+        // Attach change listeners to group selects
+        document.querySelectorAll('.test-point-group-select').forEach(select => {
+          select.addEventListener('change', () => {
+            const testId = parseInt(select.dataset.testId);
+            const newGroupIdx = parseInt(select.value);
+            moveTestToGroup(testId, newGroupIdx);
+          });
+        });
+      }
+      
+      function renderGroupScoresSummary() {
+        const container = document.getElementById('groupScoresList');
+        container.innerHTML = '';
+        
+        if (testGroups.length === 0) {
+          container.innerHTML = '<span style="color: #666; font-size: 0.85em;">暂无分组</span>';
+          return;
+        }
+        
+        testGroups.forEach((group, idx) => {
+          const tag = document.createElement('span');
+          tag.className = 'group-score-tag';
+          tag.innerHTML = `
+            <span class="group-label">分组 ${idx + 1}:</span>
+            <span class="score-value">${group.score}分</span>
+            <span style="color: #999; font-size: 0.85em;">(${group.cases.length}个点)</span>
+          `;
+          container.appendChild(tag);
+        });
+      }
+      
+      function moveTestToGroup(testId, newGroupIdx) {
+        // Remove from old group
+        if (testCaseToGroup[testId] !== undefined) {
+          const oldIdx = testCaseToGroup[testId];
+          testGroups[oldIdx].cases = testGroups[oldIdx].cases.filter(c => c !== testId);
+        }
+        
+        // Add to new group
+        if (newGroupIdx >= 0 && newGroupIdx < testGroups.length) {
+          if (!testGroups[newGroupIdx].cases.includes(testId)) {
+            testGroups[newGroupIdx].cases.push(testId);
+            testGroups[newGroupIdx].cases.sort((a, b) => a - b);
+          }
+          testCaseToGroup[testId] = newGroupIdx;
+        } else {
+          delete testCaseToGroup[testId];
+        }
+        
+        // Re-render
+        renderTestGroups(testGroups, totalTestsCount);
+      }
+      
+      window.removeTestFromGroup = function(testId) {
+        moveTestToGroup(testId, -1);
+      };
 
       // Add new group
       document.getElementById('addGroupBtn').addEventListener('click', () => {
         const scoreInput = document.getElementById('newGroupScore');
         const score = parseInt(scoreInput.value) || 0;
         testGroups.push({ cases: [], score: score });
-        const totalTests = parseInt(document.getElementById('infoTestsCount').value) || 0;
-        renderTestGroups(testGroups, totalTests);
+        renderTestGroups(testGroups, totalTestsCount);
         scoreInput.value = '';
       });
 

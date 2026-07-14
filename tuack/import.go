@@ -544,3 +544,278 @@ func findTuackRoot(baseDir string) string {
 
 	return ""
 }
+
+// CDFTask represents a task/problem in the CDF format
+type CDFTask struct {
+	ProblemTitle          string `json:"problemTitle"`
+	SourceFileName        string `json:"sourceFileName"`
+	InputFileName         string `json:"inputFileName"`
+	OutputFileName        string `json:"outputFileName"`
+	RealPrecision         int    `json:"realPrecision"`
+	SpecialJudge          string `json:"specialJudge"`
+	StandardInputCheck    bool   `json:"standardInputCheck"`
+	StandardOutputCheck   bool   `json:"standardOutputCheck"`
+	SubFolderCheck        bool   `json:"subFolderCheck"`
+	TaskType              int    `json:"taskType"`
+	CompilerConfiguration struct {
+		GPlusPlus string `json:"g++"`
+	} `json:"compilerConfiguration"`
+	DiffArguments       string        `json:"diffArguments"`
+	AnswerFileExtension string        `json:"answerFileExtension"`
+	TestCases           []CDFTestCase `json:"testCases"`
+}
+
+// CDFTestCase represents a test case group in the CDF format
+type CDFTestCase struct {
+	FullScore   int      `json:"fullScore"`
+	InputFiles  []string `json:"inputFiles"`
+	OutputFiles []string `json:"outputFiles"`
+	TimeLimit   int      `json:"timeLimit"`
+	MemoryLimit int      `json:"memoryLimit"`
+}
+
+// CDFData represents the root CDF structure
+type CDFData struct {
+	ContestTitle string        `json:"contestTitle"`
+	Tasks        []CDFTask     `json:"tasks"`
+	Contestants  []interface{} `json:"contestants"`
+}
+
+// CDFImportResult contains the result of importing a CDF package
+type CDFImportResult struct {
+	ProblemID  uint   `json:"problem_id"`
+	Title      string `json:"title"`
+	TestCount  int    `json:"test_count"`
+	SourceName string `json:"source_name"`
+}
+
+// CDFResult contains the overall result of importing a CDF package
+type CDFResult struct {
+	Problems []CDFImportResult `json:"problems"`
+	Message  string            `json:"message"`
+}
+
+// ImportCDFPackage imports problems from a CDF zip file.
+// The zip should contain a *.cdf file and a data folder with test data.
+func ImportCDFPackage(zipPath string) (*CDFResult, error) {
+	// Open zip file
+	reader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open zip file: %v", err)
+	}
+	defer reader.Close()
+
+	// Create extraction directory
+	tempDir, err := os.MkdirTemp("", "cdf-import-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	extractDir := filepath.Join(tempDir, "extracted")
+	if err := os.MkdirAll(extractDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create extract dir: %v", err)
+	}
+
+	// Extract all files
+	for _, f := range reader.File {
+		filePath := filepath.Join(extractDir, f.Name)
+
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(filePath, 0755)
+			continue
+		}
+
+		if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+			return nil, fmt.Errorf("failed to create directory for %s: %v", f.Name, err)
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open %s: %v", f.Name, err)
+		}
+
+		outFile, err := os.Create(filePath)
+		if err != nil {
+			rc.Close()
+			return nil, fmt.Errorf("failed to create file %s: %v", f.Name, err)
+		}
+
+		_, err = io.Copy(outFile, rc)
+		rc.Close()
+		outFile.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to extract %s: %v", f.Name, err)
+		}
+	}
+
+	// Find CDF file
+	cdfFiles, _ := filepath.Glob(filepath.Join(extractDir, "*.cdf"))
+	if len(cdfFiles) == 0 {
+		return nil, errors.New("no .cdf file found in zip")
+	}
+
+	// Read and parse CDF
+	cdfData, err := os.ReadFile(cdfFiles[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CDF file: %v", err)
+	}
+
+	var cdf CDFData
+	if err := json.Unmarshal(cdfData, &cdf); err != nil {
+		return nil, fmt.Errorf("failed to parse CDF JSON: %v", err)
+	}
+
+	if len(cdf.Tasks) == 0 {
+		return nil, errors.New("no tasks found in CDF file")
+	}
+
+	// Find the data folder path
+	dataDir := filepath.Join(extractDir, "data")
+
+	db := sql_service.DB()
+	if db == nil {
+		return nil, errors.New("database not initialized")
+	}
+
+	createdProblems := []CDFImportResult{}
+
+	// Process each task
+	for _, task := range cdf.Tasks {
+		// Create problem in database first to get auto-generated ID
+		problem := sql_service.Problem{
+			Title:       task.ProblemTitle,
+			TestsCount:  0,
+			TimeLimitMs: 1000,
+			MemLimitMB:  512,
+		}
+		if err := db.Create(&problem).Error; err != nil {
+			return nil, fmt.Errorf("failed to save problem to database: %v", err)
+		}
+
+		// Create problem directory using the auto-generated ID
+		problemDir := filepath.Join("data", "problem", strconv.FormatUint(uint64(problem.ID), 10))
+		if err := os.MkdirAll(problemDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create problem directory: %v", err)
+		}
+
+		// Write statement.md with "等待填充"
+		statementPath := filepath.Join(problemDir, "statement.md")
+		if err := os.WriteFile(statementPath, []byte("等待填充"), 0644); err != nil {
+			return nil, fmt.Errorf("failed to write statement.md: %v", err)
+		}
+
+		// Get source file name (folder name in data folder)
+		sourceName := task.SourceFileName
+		taskDataDir := filepath.Join(dataDir, sourceName)
+
+		// Build test cases and config
+		testGroups := []map[string]interface{}{}
+		testCaseIndex := 0
+		timeLimit := 1000
+		memLimit := 512
+
+		for _, tc := range task.TestCases {
+			if tc.TimeLimit > 0 {
+				timeLimit = tc.TimeLimit
+			}
+			if tc.MemoryLimit > 0 {
+				memLimit = tc.MemoryLimit
+			}
+
+			groupCases := []int{}
+			for j, inputFile := range tc.InputFiles {
+				if inputFile == "" {
+					continue
+				}
+
+				// Skip if no corresponding output file
+				if j >= len(tc.OutputFiles) || tc.OutputFiles[j] == "" {
+					continue
+				}
+
+				testCaseIndex++
+
+				// Extract just the filename from the path
+				// Note: CDF uses backslash on Windows, need to convert to forward slash first
+				// because filepath.Base won't recognize backslash as separator on Unix
+				inputFilename := filepath.Base(inputFile)
+				outputFilename := tc.OutputFiles[j]
+				outputFilename = strings.ReplaceAll(outputFilename, "\\", "/")
+				outputFilename = filepath.Base(outputFilename)
+
+				// If output file has no extension, use AnswerFileExtension
+				if filepath.Ext(outputFilename) == "" && task.AnswerFileExtension != "" {
+					outputFilename = outputFilename + task.AnswerFileExtension
+				}
+
+				// Read input file from data folder
+				srcInputPath := filepath.Join(taskDataDir, inputFilename)
+				srcOutputPath := filepath.Join(taskDataDir, outputFilename)
+
+				// Copy input file
+				if inputData, err := os.ReadFile(srcInputPath); err == nil {
+					dstInputPath := filepath.Join(problemDir, fmt.Sprintf("%d.in", testCaseIndex))
+					if err := os.WriteFile(dstInputPath, inputData, 0644); err != nil {
+						return nil, fmt.Errorf("failed to write input file: %v", err)
+					}
+				}
+
+				// Copy output file (normalize .out to .ans)
+				if outputData, err := os.ReadFile(srcOutputPath); err == nil {
+					ext := filepath.Ext(outputFilename)
+					// Normalize .out to .ans
+					switch ext {
+					case ".out", "":
+						ext = ".ans"
+					}
+					dstOutputPath := filepath.Join(problemDir, fmt.Sprintf("%d%s", testCaseIndex, ext))
+					if err := os.WriteFile(dstOutputPath, outputData, 0644); err != nil {
+						return nil, fmt.Errorf("failed to write output file: %v", err)
+					}
+				}
+
+				groupCases = append(groupCases, testCaseIndex)
+			}
+
+			if len(groupCases) > 0 {
+				testGroups = append(testGroups, map[string]interface{}{
+					"cases": groupCases,
+					"score": tc.FullScore,
+				})
+			}
+		}
+
+		// Write config.json
+		config := map[string]interface{}{
+			"test_cases":   testGroups,
+			"time_limit":   timeLimit,
+			"memory_limit": memLimit,
+		}
+		configPath := filepath.Join(problemDir, "config.json")
+		configJSON, _ := json.MarshalIndent(config, "", "  ")
+		if err := os.WriteFile(configPath, configJSON, 0644); err != nil {
+			return nil, fmt.Errorf("failed to write config.json: %v", err)
+		}
+
+		// Update problem with test count and limits
+		problem.TestsCount = testCaseIndex
+		problem.TimeLimitMs = timeLimit
+		problem.MemLimitMB = memLimit
+		if err := db.Save(&problem).Error; err != nil {
+			return nil, fmt.Errorf("failed to update problem: %v", err)
+		}
+
+		createdProblems = append(createdProblems, CDFImportResult{
+			ProblemID:  problem.ID,
+			Title:      task.ProblemTitle,
+			TestCount:  testCaseIndex,
+			SourceName: sourceName,
+		})
+	}
+
+	return &CDFResult{
+		Problems: createdProblems,
+		Message:  fmt.Sprintf("Successfully imported %d problems", len(createdProblems)),
+	}, nil
+}

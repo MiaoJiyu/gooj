@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>导入CDF题目包 - Gooj</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <style>
+        #file-input {
+            display: none;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+            margin-top: 10px;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .submit-btn:disabled {
+            background: var(--text-light);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 25px;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.3s;
+        }
+
+        .back-link:hover {
+            color: var(--secondary-color);
+            text-decoration: underline;
+        }
+
+        .status-message {
+            padding: 12px;
+            border-radius: var(--radius-md);
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status-loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border: 1px solid #b3d7ff;
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .info-box h4 {
+            margin: 0 0 10px 0;
+            color: #004085;
+        }
+
+        .info-box ul {
+            margin: 0;
+            padding-left: 20px;
+            color: #004085;
+        }
+
+        .info-box li {
+            margin-bottom: 5px;
+        }
+
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        .results-table th, .results-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .results-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .results-table tr:hover {
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="manage-container">
+        <nav>
+            <a href="/manage">返回管理</a>
+            <a href="/problemlist">题目列表</a>
+            <a href="/">返回首页</a>
+        </nav>
+        <h1>导入CDF题目包</h1>
+
+        <div class="info-box">
+            <h4>CDF格式说明</h4>
+            <ul>
+                <li>压缩包应包含一个 *.cdf 文件和 data 文件夹</li>
+                <li>data 文件夹中包含各题目的测试数据</li>
+                <li>题目将自动创建，题面默认为"等待填充"</li>
+                <li>测试点结构和分数设置将根据CDF自动配置</li>
+            </ul>
+        </div>
+
+        <div id="status-message" class="status-message"></div>
+
+        <form id="upload-form">
+            <div class="form-group">
+                <label>CDF压缩包 (zip格式)</label>
+                <div class="upload-area" id="upload-area">
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text">点击或拖拽文件到这里</div>
+                    <div class="upload-hint">支持 .zip 格式，包含 *.cdf 和 data 文件夹</div>
+                    <input type="file" id="file-input" name="file" accept=".zip" required>
+                </div>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submit-btn">
+                导入题目
+            </button>
+        </form>
+
+        <div id="results" style="display: none;">
+            <h3>导入结果</h3>
+            <table class="results-table">
+                <thead>
+                    <tr>
+                        <th>题目ID</th>
+                        <th>题目标题</th>
+                        <th>源名称</th>
+                        <th>测试点数</th>
+                    </tr>
+                </thead>
+                <tbody id="results-body">
+                </tbody>
+            </table>
+        </div>
+
+        <a href="/manage" class="back-link">返回管理页面</a>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('file-input');
+        const uploadForm = document.getElementById('upload-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const statusMessage = document.getElementById('status-message');
+        const resultsDiv = document.getElementById('results');
+        const resultsBody = document.getElementById('results-body');
+
+        // 点击上传区域触发文件选择
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // 拖拽功能
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight() {
+            uploadArea.classList.add('dragover');
+        }
+
+        function unhighlight() {
+            uploadArea.classList.remove('dragover');
+        }
+
+        // 处理文件拖放
+        uploadArea.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.type === 'application/zip' || file.name.endsWith('.zip')) {
+                    fileInput.files = files;
+                    updateUploadArea(file.name);
+                } else {
+                    showMessage('请选择zip格式的文件', 'error');
+                }
+            }
+        }
+
+        // 文件选择变化
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                updateUploadArea(fileInput.files[0].name);
+            }
+        });
+
+        function updateUploadArea(fileName) {
+            const uploadText = uploadArea.querySelector('.upload-text');
+            const uploadIcon = uploadArea.querySelector('.upload-icon');
+            
+            uploadText.textContent = `已选择: ${fileName}`;
+            uploadIcon.textContent = '';
+            uploadArea.style.background = '#e8f5e9';
+        }
+
+        // 表单提交
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData();
+            
+            if (fileInput.files.length === 0) {
+                showMessage('请选择要上传的文件', 'error');
+                return;
+            }
+            
+            formData.append('file', fileInput.files[0]);
+
+            // 显示加载状态
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<div class="loading"></div>导入中...';
+            showMessage('正在上传并处理CDF包，请稍候...', 'loading');
+            resultsDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/import_cdf', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(`成功导入 ${result.problems.length} 道题目！`, 'success');
+                    
+                    // 显示结果表格
+                    resultsBody.innerHTML = '';
+                    result.problems.forEach(p => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${p.problem_id}</td>
+                            <td>${p.title}</td>
+                            <td>${p.source_name}</td>
+                            <td>${p.test_count}</td>
+                        `;
+                        resultsBody.appendChild(tr);
+                    });
+                    resultsDiv.style.display = 'block';
+                    
+                    // 清空表单
+                    uploadForm.reset();
+                    // 重置上传区域
+                    const uploadText = uploadArea.querySelector('.upload-text');
+                    const uploadIcon = uploadArea.querySelector('.upload-icon');
+                    uploadText.textContent = '点击或拖拽文件到这里';
+                    uploadIcon.textContent = '📁';
+                    uploadArea.style.background = '#f8f9fa';
+                } else {
+                    showMessage(`导入失败: ${result.error || '未知错误'}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`网络错误: ${error.message}`, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = '导入题目';
+            }
+        });
+
+        function showMessage(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = 'status-message';
+            statusMessage.classList.add(`status-${type}`);
+            statusMessage.style.display = 'block';
+            
+            if (type !== 'loading') {
+                setTimeout(() => {
+                    statusMessage.style.display = 'none';
+                }, 5000);
+            }
+        }
+    </script>
+</body>
+</html>

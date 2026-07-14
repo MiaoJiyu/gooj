@@ -27,7 +27,8 @@ func GetRatingLeaderboardHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var users []sql_service.User
-	if err := db.Order("rating desc, username asc").Find(&users).Error; err != nil {
+	// Only select fields needed for ranking (username, rating and group_name)
+	if err := db.Select("username, rating, group_name").Order("rating desc, username asc").Find(&users).Error; err != nil {
 		http.Error(w, "failed to load ranking", http.StatusInternalServerError)
 		return
 	}

@@ -130,13 +130,13 @@
 {
   "problems": [
     {
-      "ID": 1,
-      "Title": "A+B Problem",
-      "Description": "...",
-      "TimeLimitMs": 1000,
-      "MemLimitMB": 256,
-      "PublicTime": "2024-01-01T00:00:00Z",
-      ...
+      "id": 1,
+      "title": "A+B Problem",
+      "tests_count": 10,
+      "time_limit_ms": 1000,
+      "mem_limit_mb": 256,
+      "problem_visible": true,
+      "test_visible": false
     }
   ],
   "total": 100,
@@ -144,6 +144,8 @@
   "per": 10
 }
 ```
+
+**说明**: 题目列表不包含 `description` 字段（避免传输大量数据），如需获取完整题目描述请使用 `/api/problem/{id}` 接口。
 
 **前端使用**:
 - [problemlist.html](static/problemlist.html): 加载题目列表
@@ -439,12 +441,15 @@
 
 **功能**: 获取指定提交的详细信息。
 
-**权限**: 需要登录
+**权限**: 需要登录（仅能查看自己的提交或具有 EditPermission 可查看所有）
 
 **输入**:
 - URL 参数: `id` (int): 提交 ID
 
 **输出**: 提交详情 JSON
+
+**说明**: 
+- `test_results[].output`: 已移除（避免泄露测试数据）
 
 ---
 
@@ -623,6 +628,49 @@
 
 ---
 
+### `/api/user/{username}/bio` [GET]
+
+**功能**: 获取用户个人简介（Markdown 格式）。
+
+**权限**: 用户本人或具有 `EditPermission` 的用户可查看
+
+**输入**:
+- URL 参数: `username` (string): 用户名
+
+**输出**:
+```json
+{
+  "bio": "## 个人简介\n\n这是我的简介内容，支持 Markdown 格式。"
+}
+```
+
+**错误响应**:
+- 403 Forbidden: 无权限查看该用户的简介
+
+---
+
+### `/api/user/{username}/bio` [POST]
+
+**功能**: 更新用户个人简介（Markdown 格式）。
+
+**权限**: 用户本人或具有 `EditPermission` 的用户可更新
+
+**输入**:
+- URL 参数: `username` (string): 用户名
+- JSON Body: `{ "bio": "## 我的简介\n\n支持 Markdown 和 LaTeX 公式。" }`
+- 简介长度限制: 最大 100KB
+
+**输出**:
+```json
+{ "message": "Bio updated" }
+```
+
+**错误响应**:
+- 400 Bad Request: 简介超过 100KB 限制
+- 403 Forbidden: 无权限更新该用户的简介
+
+---
+
 ## 用户管理 API (需要权限)
 
 ### `/api/users` [GET]
@@ -634,10 +682,24 @@
 **输出**:
 ```json
 {
-  "users": [...],
+  "users": [
+    {
+      "id": 1,
+      "username": "user1",
+      "group_name": "student",
+      "rating": 1500,
+      "role": "user",
+      "created_at": "2024-01-01T00:00:00Z",
+      "approved": true,
+      "approved_at": "2024-01-02T00:00:00Z",
+      "approved_by": "admin"
+    }
+  ],
   "total": 100
 }
 ```
+
+**说明**: 返回的用户信息已过滤敏感字段（不包含 `password`、`bio` 等内部字段）。
 
 ---
 
@@ -650,10 +712,21 @@
 **输出**:
 ```json
 {
-  "users": [...],
+  "users": [
+    {
+      "id": 1,
+      "username": "user1",
+      "group_name": "student",
+      "rating": 1500,
+      "role": "user",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ],
   "total": 100
 }
 ```
+
+**说明**: 返回的用户信息已过滤敏感字段（不包含 `password`、`approved` 等内部字段）。
 
 **前端使用**:
 - [register.html](static/register.html): 注册时选择用户组
@@ -723,10 +796,21 @@
 **输出**:
 ```json
 {
-  "users": [...],
+  "users": [
+    {
+      "id": 1,
+      "username": "newuser",
+      "group_name": "student",
+      "rating": 1500,
+      "role": "user",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ],
   "total": 10
 }
 ```
+
+**说明**: 返回的用户信息已过滤敏感字段（不包含 `password` 等内部字段）。
 
 **前端使用**:
 - [manage_users.html](static/manage_users.html): 显示待审核用户
@@ -742,10 +826,21 @@
 **输出**:
 ```json
 {
-  "users": [...],
+  "users": [
+    {
+      "id": 1,
+      "username": "user1",
+      "group_name": "student",
+      "rating": 1500,
+      "role": "user",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ],
   "total": 90
 }
 ```
+
+**说明**: 返回的用户信息已过滤敏感字段（不包含 `password` 等内部字段）。
 
 **前端使用**:
 - [manage_users.html](static/manage_users.html): 显示已审核用户
@@ -1004,12 +1099,22 @@
       "start_at": "2024-01-01T00:00:00Z",
       "end_at": "2024-01-08T00:00:00Z",
       "created_by": "admin",
-      "problems": [...]
+      "problems": [
+        {
+          "id": 1,
+          "title": "A+B Problem",
+          "tests_count": 10,
+          "time_limit_ms": 1000,
+          "mem_limit_mb": 256
+        }
+      ]
     }
   ],
   "total": 5
 }
 ```
+
+**说明**: 比赛中的题目列表只包含基本信息，不包含 `description` 字段。
 
 **前端使用**:
 - [contest.html](static/contest.html): 加载比赛列表
@@ -1034,9 +1139,19 @@
   "start_at": "2024-01-01T00:00:00Z",
   "end_at": "2024-01-08T00:00:00Z",
   "created_by": "admin",
-  "problems": [...]
+  "problems": [
+    {
+      "id": 1,
+      "title": "A+B Problem",
+      "tests_count": 10,
+      "time_limit_ms": 1000,
+      "mem_limit_mb": 256
+    }
+  ]
 }
 ```
+
+**说明**: 比赛中的题目列表只包含基本信息，不包含 `description` 字段。
 
 **前端使用**:
 - [contest_detail.html](static/contest_detail.html): 加载比赛详情
@@ -1058,10 +1173,11 @@
   "contest_id": 1,
   "rows": [
     {
-      "rank": 1,
       "username": "user1",
-      "total_score": 500,
-      "rating_change": 50
+      "group_name": "student",
+      "rating": 1600,
+      "scores": { "1": 100, "2": 100, "3": 100 },
+      "total": 300
     }
   ]
 }

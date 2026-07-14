@@ -213,3 +213,78 @@ func GetUserSolvedProblemsHandler(w http.ResponseWriter, r *http.Request) {
 		"count":      len(solvedIDsList),
 	})
 }
+
+// GetUserBioHandler returns user's bio (markdown) as JSON
+// Only the user themselves or users with EditPermission can view
+func GetUserBioHandler(w http.ResponseWriter, r *http.Request) {
+	currentUsername := manage.CurrentUsername(r)
+	if currentUsername == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	targetUsername := vars["username"]
+
+	// Only allow user themselves or users with EditPermission to view bio
+	if currentUsername != targetUsername && !manage.CheckUserPermission(currentUsername, "EditPermission") {
+		http.Error(w, "Permission denied", http.StatusForbidden)
+		return
+	}
+
+	var user sql_service.User
+	db := sql_service.DB()
+	if err := db.Where("username = ?", targetUsername).First(&user).Error; err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"bio": user.Bio,
+	})
+}
+
+// UpdateUserBioHandler updates user's bio (markdown)
+// Only the user themselves or users with EditPermission can update
+func UpdateUserBioHandler(w http.ResponseWriter, r *http.Request) {
+	currentUsername := manage.CurrentUsername(r)
+	if currentUsername == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	targetUsername := vars["username"]
+
+	// Only allow user themselves or users with EditPermission to update bio
+	if currentUsername != targetUsername && !manage.CheckUserPermission(currentUsername, "EditPermission") {
+		http.Error(w, "Permission denied", http.StatusForbidden)
+		return
+	}
+
+	var req struct {
+		Bio string `json:"bio"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Security: limit bio length to 100KB
+	const maxBioLength = 100 * 1024
+	if len(req.Bio) > maxBioLength {
+		http.Error(w, "bio exceeds maximum length of 100KB", http.StatusBadRequest)
+		return
+	}
+
+	db := sql_service.DB()
+	if err := db.Model(&sql_service.User{}).Where("username = ?", targetUsername).Update("bio", req.Bio).Error; err != nil {
+		http.Error(w, "Failed to update bio", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"message":"Bio updated"}`))
+}

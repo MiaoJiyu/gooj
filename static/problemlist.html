@@ -66,9 +66,9 @@
             j.problems.forEach(p => {
               const tr = document.createElement('tr');
               tr.innerHTML = `
-                <td>${p.ID}</td>
-                <td>${p.Title || ''}</td>
-                <td><a href="/problem?id=${encodeURIComponent(p.ID)}">查看题目</a></td>
+                <td>${p.id}</td>
+                <td>${p.title || ''}</td>
+                <td><a href="/problem?id=${encodeURIComponent(p.id)}">查看题目</a></td>
               `;
               tbody.appendChild(tr);
             });

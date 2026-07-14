@@ -259,10 +259,7 @@ func GetStartedContestsWithoutReveal() ([]Contest, error) {
 	// Find contests that have started but still have hidden problems
 	// A contest needs reveal if it has started AND has at least one problem with problem_visible=false
 	if err := db.Where("start_at <= ?", now).
-		Joins("JOIN contest_problems ON contest_problems.contest_id = contests.id").
-		Joins("JOIN problems ON problems.id = contest_problems.problem_id").
-		Where("problems.problem_visible = ?", false).
-		Group("contests.id").
+		Where("EXISTS (SELECT 1 FROM contest_problems cp JOIN problems p ON p.id = cp.problem_id WHERE cp.contest_id = contests.id AND p.problem_visible = false)").
 		Find(&contests).Error; err != nil {
 		return nil, err
 	}

@@ -33,6 +33,13 @@ func SubmitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Security: limit code length to 100KB
+	const maxCodeLength = 100 * 1024
+	if len(req.Code) > maxCodeLength {
+		http.Error(w, "code exceeds maximum length of 100KB", http.StatusBadRequest)
+		return
+	}
+
 	problemID, err := parseProblemID(req.Problem)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

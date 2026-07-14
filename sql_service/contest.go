@@ -8,10 +8,11 @@ import (
 
 // ContestRankingRow describes one contestant's aggregate score in a contest.
 type ContestRankingRow struct {
-	Username string       `json:"username"`
-	Rating   int          `json:"rating"`
-	Scores   map[uint]int `json:"score"`
-	Total    int          `json:"total"`
+	Username  string       `json:"username"`
+	GroupName string       `json:"group_name"`
+	Rating    int          `json:"rating"`
+	Scores    map[uint]int `json:"scores"`
+	Total     int          `json:"total"`
 }
 
 // ListContests returns all contest definitions sorted by start time.
@@ -72,18 +73,22 @@ func DeleteContest(id uint) error {
 	if db == nil {
 		return errors.New("db not initialized")
 	}
-	// First delete associated records from the many-to-many join table
-	if err := db.Exec("DELETE FROM contest_problems WHERE contest_id = ?", id).Error; err != nil {
+	var contest Contest
+	if err := db.First(&contest, id).Error; err != nil {
 		return err
 	}
-	if err := db.Exec("DELETE FROM contest_groups WHERE contest_id = ?", id).Error; err != nil {
+	// Use GORM's Association API to clear many-to-many relationships
+	if err := db.Model(&contest).Association("Problems").Clear(); err != nil {
+		return err
+	}
+	if err := db.Model(&contest).Association("Groups").Clear(); err != nil {
 		return err
 	}
 	// Also delete any rating history for this contest
 	if err := db.Exec("DELETE FROM contest_rating_histories WHERE contest_id = ?", id).Error; err != nil {
 		return err
 	}
-	return db.Delete(&Contest{}, id).Error
+	return db.Delete(&contest).Error
 }
 
 // RevealContestProblems sets ProblemVisible=true for all problems in a contest.
@@ -92,19 +97,59 @@ func RevealContestProblems(contestID uint) error {
 	if db == nil {
 		return errors.New("db not initialized")
 	}
-	return db.Model(&Problem{}).
-		Joins("JOIN contest_problems ON contest_problems.problem_id = problems.id").
-		Where("contest_problems.contest_id = ?", contestID).
-		Update("problem_visible", true).Error
+	var contest Contest
+	if err := db.Preload("Problems").First(&contest, contestID).Error; err != nil {
+		return err
+	}
+	for _, problem := range contest.Problems {
+		if err := db.Model(&problem).Update("problem_visible", true).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// ListContestProblems returns all problems linked to a contest.
-func ListContestProblems(contestID uint) ([]Problem, error) {
-	contest, err := GetContestByID(contestID)
-	if err != nil {
+// ContestProblemInfo contains only the necessary problem info for contest listing
+type ContestProblemInfo struct {
+	ID          uint   `json:"id"`
+	Title       string `json:"title"`
+	TestsCount  int    `json:"tests_count"`
+	TimeLimitMs int    `json:"time_limit_ms"`
+	MemLimitMB  int    `json:"mem_limit_mb"`
+}
+
+// ListContestProblems returns all problems linked to a contest (without Description).
+func ListContestProblems(contestID uint) ([]ContestProblemInfo, error) {
+	if db == nil {
+		return nil, errors.New("db not initialized")
+	}
+	// Query the contest_problems junction table directly to get problem IDs
+	var problemIDs []uint
+	if err := db.Table("contest_problems").
+		Where("contest_id = ?", contestID).
+		Pluck("problem_id", &problemIDs).Error; err != nil {
 		return nil, err
 	}
-	return contest.Problems, nil
+	if len(problemIDs) == 0 {
+		return []ContestProblemInfo{}, nil
+	}
+	// Only select fields needed (avoid selecting large Description field)
+	var problems []Problem
+	if err := db.Select("id, title, tests_count, time_limit_ms, mem_limit_mb").
+		Where("id IN ?", problemIDs).Find(&problems).Error; err != nil {
+		return nil, err
+	}
+	result := make([]ContestProblemInfo, len(problems))
+	for i, p := range problems {
+		result[i] = ContestProblemInfo{
+			ID:          p.ID,
+			Title:       p.Title,
+			TestsCount:  p.TestsCount,
+			TimeLimitMs: p.TimeLimitMs,
+			MemLimitMB:  p.MemLimitMB,
+		}
+	}
+	return result, nil
 }
 
 // GetContestLeaderboard computes a simple scoreboard for the problems in a contest.
@@ -169,10 +214,11 @@ func GetContestLeaderboard(contestID uint) ([]ContestRankingRow, error) {
 
 	result := make([]ContestRankingRow, 0, len(leaderboard))
 	for username, row := range leaderboard {
-		// enrich with user rating
+		// enrich with user rating and group
 		var user User
 		if err := db.Where("username = ?", username).First(&user).Error; err == nil {
 			row.Rating = user.Rating
+			row.GroupName = user.GroupName
 		}
 		result = append(result, *row)
 	}

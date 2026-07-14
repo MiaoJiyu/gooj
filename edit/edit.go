@@ -98,6 +98,12 @@ func ModifyProblemStatementHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing fields", http.StatusBadRequest)
 		return
 	}
+	// Security: limit statement length to 100KB
+	const maxStatementLength = 100 * 1024
+	if len(req.NewStatement) > maxStatementLength {
+		http.Error(w, "statement exceeds maximum length of 100KB", http.StatusBadRequest)
+		return
+	}
 	// Validate problem ID to prevent path traversal
 	if !validateProblemID(req.ProblemID) {
 		http.Error(w, "invalid problem id", http.StatusBadRequest)
@@ -128,6 +134,12 @@ func AddTestDataHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if req.ProblemID == "" || req.TestIndex <= 0 || req.InputData == "" || req.OutputData == "" {
 		http.Error(w, "missing fields", http.StatusBadRequest)
+		return
+	}
+	// Security: limit test data length to 100KB each
+	const maxTestDataLength = 100 * 1024
+	if len(req.InputData) > maxTestDataLength || len(req.OutputData) > maxTestDataLength {
+		http.Error(w, "test data exceeds maximum length of 100KB", http.StatusBadRequest)
 		return
 	}
 	// Validate problem ID to prevent path traversal
@@ -245,8 +257,12 @@ func ImportTuackHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ImportDataZipHandler imports a simple data.zip containing only *.in and *.ans test files.
-// It auto-generates config.json with one group containing all test cases.
+// ImportDataZipHandler imports a simple data.zip containing *.in, *.ans, and/or *.out test files.
+// It auto-detects file naming patterns:
+//   - If only .out files exist (no .ans), renames all .out to .ans
+//   - For *-*.in/*-*.out format (e.g., 1-1.in, 1-2.out), groups by first number
+//   - For 1a.in format, groups by numeric prefix (same number = same group)
+//   - Otherwise, each file is its own test case
 func ImportDataZipHandler(w http.ResponseWriter, r *http.Request) {
 	currentUser := manage.CurrentUsername(r)
 	if !manage.CheckUserPermission(currentUser, "EditPermission") {
@@ -333,15 +349,34 @@ func ImportDataZipHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Collect .in and .ans files keyed by base name (e.g. "1" -> {"in":"1.in content", "ans":"1.ans content"})
-	inRE := regexp.MustCompile(`^(.+)\.in$`)
+	// File matching patterns:
+	// 1. *.in / *.ans / *.out (simple format like 1.in, 1.ans)
+	// 2. *-*.in / *-*.out (split format like 1-1.in, 1-2.out)
+	// 3. *a.in, *b.in (letter suffix like 1a.in, 1b.in)
+	simpleInRE := regexp.MustCompile(`^(.+)\.in$`)
 	ansRE := regexp.MustCompile(`^(.+)\.ans$`)
+	outRE := regexp.MustCompile(`^(.+)\.out$`)
+	splitInRE := regexp.MustCompile(`^(\d+)-(\d+)\.in$`)
+	splitOutRE := regexp.MustCompile(`^(\d+)-(\d+)\.out$`)
+	letterInRE := regexp.MustCompile(`^(\d+)([a-zA-Z])\.in$`)
+	letterOutRE := regexp.MustCompile(`^(\d+)([a-zA-Z])\.out$`)
 
-	type filePair struct {
-		in  []byte
-		ans []byte
+	type testFile struct {
+		inContent  []byte
+		outContent []byte
+		ansContent []byte
+		groupKey   string // For grouping: "group1", "group2", etc.
+		subIndex   int    // For ordering within group
 	}
-	pairs := make(map[string]*filePair)
+
+	// Detect file naming pattern and collect files
+	// firstPassMap: baseName -> file data (for simple pattern)
+	// splitGroups: groupKey -> list of testFile (for split-*-* pattern)
+	// letterGroups: groupKey -> list of testFile (for letter suffix pattern)
+	firstPassMap := make(map[string]*testFile)
+	splitGroups := make(map[string][]*testFile)
+	letterGroups := make(map[string][]*testFile)
+	fileCount := 0
 
 	for _, f := range reader.File {
 		name := filepath.Base(f.Name)
@@ -360,81 +395,417 @@ func ImportDataZipHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if m := inRE.FindStringSubmatch(name); m != nil {
-			base := m[1]
-			if pairs[base] == nil {
-				pairs[base] = &filePair{}
+		// Check for split-*-in/out format first (e.g., 1-1.in, 1-2.out)
+		if m := splitInRE.FindStringSubmatch(name); m != nil {
+			groupKey := m[1] // First number is group key
+			subIndex, _ := strconv.Atoi(m[2])
+			if splitGroups[groupKey] == nil {
+				splitGroups[groupKey] = []*testFile{}
 			}
-			pairs[base].in = content
-		} else if m := ansRE.FindStringSubmatch(name); m != nil {
-			base := m[1]
-			if pairs[base] == nil {
-				pairs[base] = &filePair{}
+			splitGroups[groupKey] = append(splitGroups[groupKey], &testFile{
+				inContent: content,
+				groupKey:  groupKey,
+				subIndex:  subIndex,
+			})
+			fileCount++
+			continue
+		}
+		if m := splitOutRE.FindStringSubmatch(name); m != nil {
+			groupKey := m[1]
+			subIndex, _ := strconv.Atoi(m[2])
+			if splitGroups[groupKey] == nil {
+				splitGroups[groupKey] = []*testFile{}
 			}
-			pairs[base].ans = content
+			// Find existing entry or create new
+			found := false
+			for _, tf := range splitGroups[groupKey] {
+				if tf.subIndex == subIndex {
+					tf.outContent = content
+					found = true
+					break
+				}
+			}
+			if !found {
+				splitGroups[groupKey] = append(splitGroups[groupKey], &testFile{
+					outContent: content,
+					groupKey:   groupKey,
+					subIndex:   subIndex,
+				})
+			}
+			fileCount++
+			continue
+		}
+		if m := letterInRE.FindStringSubmatch(name); m != nil {
+			groupKey := m[1]
+			if letterGroups[groupKey] == nil {
+				letterGroups[groupKey] = []*testFile{}
+			}
+			letterGroups[groupKey] = append(letterGroups[groupKey], &testFile{
+				inContent: content,
+				groupKey:  groupKey,
+				subIndex:  int(m[2][0]), // Use letter ASCII as sub-index
+			})
+			fileCount++
+			continue
+		}
+		if m := letterOutRE.FindStringSubmatch(name); m != nil {
+			groupKey := m[1]
+			if letterGroups[groupKey] == nil {
+				letterGroups[groupKey] = []*testFile{}
+			}
+			// Find existing or create new
+			subIdx := int(m[2][0])
+			found := false
+			for _, tf := range letterGroups[groupKey] {
+				if tf.subIndex == subIdx {
+					tf.outContent = content
+					found = true
+					break
+				}
+			}
+			if !found {
+				letterGroups[groupKey] = append(letterGroups[groupKey], &testFile{
+					outContent: content,
+					groupKey:   groupKey,
+					subIndex:   subIdx,
+				})
+			}
+			fileCount++
+			continue
+		}
+
+		// Simple format (e.g., 1.in, 1.ans, 1.out)
+		if m := simpleInRE.FindStringSubmatch(name); m != nil {
+			base := m[1]
+			if firstPassMap[base] == nil {
+				firstPassMap[base] = &testFile{groupKey: base}
+			}
+			firstPassMap[base].inContent = content
+			fileCount++
+			continue
+		}
+		if m := ansRE.FindStringSubmatch(name); m != nil {
+			base := m[1]
+			if firstPassMap[base] == nil {
+				firstPassMap[base] = &testFile{groupKey: base}
+			}
+			firstPassMap[base].ansContent = content
+			continue
+		}
+		if m := outRE.FindStringSubmatch(name); m != nil {
+			base := m[1]
+			if firstPassMap[base] == nil {
+				firstPassMap[base] = &testFile{groupKey: base}
+			}
+			firstPassMap[base].outContent = content
+			fileCount++
+			continue
 		}
 		// Skip any other file types silently
 	}
 
-	if len(pairs) == 0 {
-		http.Error(w, "No .in / .ans files found in zip", http.StatusBadRequest)
+	if fileCount == 0 {
+		http.Error(w, "No .in / .ans / .out files found in zip", http.StatusBadRequest)
 		return
 	}
 
-	// Sort bases numerically
-	var bases []string
-	for base := range pairs {
-		bases = append(bases, base)
+	// Determine which pattern to use based on which groups have data
+	usePattern := "simple"
+	if len(splitGroups) > 0 && len(splitGroups) >= len(firstPassMap) {
+		usePattern = "split"
+	} else if len(letterGroups) > 0 && len(letterGroups) >= len(firstPassMap) {
+		usePattern = "letter"
 	}
-	sort.Slice(bases, func(i, j int) bool {
-		vi, _ := strconv.Atoi(bases[i])
-		vj, _ := strconv.Atoi(bases[j])
-		return vi < vj
-	})
 
-	// Write test files and build config
 	type testCaseConfig struct {
 		InputFile  string `json:"input_file"`
 		OutputFile string `json:"output_file"`
 		Score      int    `json:"score"`
+		GroupID    int    `json:"group_id"`
 	}
-	testCases := make([]testCaseConfig, 0, len(bases))
-	// Each test case is its own group
-	testGroups := make([]map[string]interface{}, 0, len(bases))
+	type groupInfo struct {
+		cases []int
+		score int
+	}
 
-	for i, base := range bases {
-		pair := pairs[base]
-		if pair == nil {
-			continue
-		}
-		idx := i + 1
+	testCases := []testCaseConfig{}
+	groups := []groupInfo{}
+	groupMap := make(map[string]int) // groupKey -> groupIndex (1-based)
 
-		// Write .in directly in problem folder
-		inPath := filepath.Join(problemDir, fmt.Sprintf("%d.in", idx))
-		if err := os.WriteFile(inPath, pair.in, 0644); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to write %s: %v", inPath, err), http.StatusInternalServerError)
-			return
-		}
-		// Write .ans directly in problem folder
-		ansPath := filepath.Join(problemDir, fmt.Sprintf("%d.ans", idx))
-		if err := os.WriteFile(ansPath, pair.ans, 0644); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to write %s: %v", ansPath, err), http.StatusInternalServerError)
-			return
-		}
+	idx := 0 // Global test case index (1-based)
 
-		testCases = append(testCases, testCaseConfig{
-			InputFile:  fmt.Sprintf("%d.in", idx),
-			OutputFile: fmt.Sprintf("%d.ans", idx),
-			Score:      calcScore(100, len(bases), i),
+	if usePattern == "split" {
+		// Sort group keys numerically
+		var groupKeys []string
+		for k := range splitGroups {
+			groupKeys = append(groupKeys, k)
+		}
+		sort.Slice(groupKeys, func(i, j int) bool {
+			vi, _ := strconv.Atoi(groupKeys[i])
+			vj, _ := strconv.Atoi(groupKeys[j])
+			return vi < vj
 		})
-		// Each test case is its own group with evenly distributed score
+
+		// Within each group, sort by subIndex
+		for _, groupKey := range groupKeys {
+			files := splitGroups[groupKey]
+			sort.Slice(files, func(i, j int) bool {
+				return files[i].subIndex < files[j].subIndex
+			})
+
+			groupIdx := len(groups) + 1
+			groupMap[groupKey] = groupIdx
+			groups = append(groups, groupInfo{cases: []int{}, score: 0})
+
+			for _, tf := range files {
+				idx++
+				// Determine output content: prefer ansContent, fallback to outContent
+				outContent := tf.outContent
+				if tf.ansContent != nil && len(tf.ansContent) > 0 {
+					outContent = tf.ansContent
+				}
+				if outContent == nil || len(outContent) == 0 {
+					// Use .out content if available, otherwise skip or error
+					continue
+				}
+
+				inPath := filepath.Join(problemDir, fmt.Sprintf("%d.in", idx))
+				if err := os.WriteFile(inPath, tf.inContent, 0644); err != nil {
+					http.Error(w, fmt.Sprintf("Failed to write %s: %v", inPath, err), http.StatusInternalServerError)
+					return
+				}
+				ansPath := filepath.Join(problemDir, fmt.Sprintf("%d.ans", idx))
+				if err := os.WriteFile(ansPath, outContent, 0644); err != nil {
+					http.Error(w, fmt.Sprintf("Failed to write %s: %v", ansPath, err), http.StatusInternalServerError)
+					return
+				}
+
+				testCases = append(testCases, testCaseConfig{
+					InputFile:  fmt.Sprintf("%d.in", idx),
+					OutputFile: fmt.Sprintf("%d.ans", idx),
+					GroupID:    groupIdx,
+				})
+				groups[groupIdx-1].cases = append(groups[groupIdx-1].cases, idx)
+			}
+		}
+	} else if usePattern == "letter" {
+		// Sort group keys numerically
+		var groupKeys []string
+		for k := range letterGroups {
+			groupKeys = append(groupKeys, k)
+		}
+		sort.Slice(groupKeys, func(i, j int) bool {
+			vi, _ := strconv.Atoi(groupKeys[i])
+			vj, _ := strconv.Atoi(groupKeys[j])
+			return vi < vj
+		})
+
+		// Within each group, sort by subIndex (letter)
+		for _, groupKey := range groupKeys {
+			files := letterGroups[groupKey]
+			sort.Slice(files, func(i, j int) bool {
+				return files[i].subIndex < files[j].subIndex
+			})
+
+			groupIdx := len(groups) + 1
+			groupMap[groupKey] = groupIdx
+			groups = append(groups, groupInfo{cases: []int{}, score: 0})
+
+			for _, tf := range files {
+				idx++
+				outContent := tf.outContent
+				if tf.ansContent != nil && len(tf.ansContent) > 0 {
+					outContent = tf.ansContent
+				}
+				if outContent == nil || len(outContent) == 0 {
+					continue
+				}
+
+				inPath := filepath.Join(problemDir, fmt.Sprintf("%d.in", idx))
+				if err := os.WriteFile(inPath, tf.inContent, 0644); err != nil {
+					http.Error(w, fmt.Sprintf("Failed to write %s: %v", inPath, err), http.StatusInternalServerError)
+					return
+				}
+				ansPath := filepath.Join(problemDir, fmt.Sprintf("%d.ans", idx))
+				if err := os.WriteFile(ansPath, outContent, 0644); err != nil {
+					http.Error(w, fmt.Sprintf("Failed to write %s: %v", ansPath, err), http.StatusInternalServerError)
+					return
+				}
+
+				testCases = append(testCases, testCaseConfig{
+					InputFile:  fmt.Sprintf("%d.in", idx),
+					OutputFile: fmt.Sprintf("%d.ans", idx),
+					GroupID:    groupIdx,
+				})
+				groups[groupIdx-1].cases = append(groups[groupIdx-1].cases, idx)
+			}
+		}
+	} else {
+		// Simple pattern - out to ans conversion happens during file processing
+
+		// Sort bases numerically
+		var bases []string
+		for base := range firstPassMap {
+			bases = append(bases, base)
+		}
+		sort.Slice(bases, func(i, j int) bool {
+			vi, _ := strconv.Atoi(bases[i])
+			vj, _ := strconv.Atoi(bases[j])
+			return vi < vj
+		})
+
+		// Group consecutive bases that have same numeric prefix (for 1a, 1b style numbering)
+		// First, detect if simple numeric pattern (1, 2, 3) or alphanumeric (1a, 1b, 2a, 2b)
+		hasAlphaSuffix := false
+		alphaPrefixGroups := make(map[string][]string) // prefix -> list of bases
+
+		for _, base := range bases {
+			// Check if base ends with a letter (like "1a", "2b")
+			if len(base) >= 2 && base[len(base)-1] >= 'a' && base[len(base)-1] <= 'z' {
+				prefix := base[:len(base)-1]
+				alphaPrefixGroups[prefix] = append(alphaPrefixGroups[prefix], base)
+				hasAlphaSuffix = true
+			}
+		}
+
+		if hasAlphaSuffix && len(alphaPrefixGroups) > 0 {
+			// Use alphanumeric grouping
+			usePattern = "letter"
+			// Rebuild letterGroups from firstPassMap
+			letterGroups = make(map[string][]*testFile)
+			for _, base := range bases {
+				tf := firstPassMap[base]
+				if len(base) >= 2 && base[len(base)-1] >= 'a' && base[len(base)-1] <= 'z' {
+					prefix := base[:len(base)-1]
+					letterGroups[prefix] = append(letterGroups[prefix], &testFile{
+						inContent:  tf.inContent,
+						outContent: tf.outContent,
+						ansContent: tf.ansContent,
+						groupKey:   prefix,
+						subIndex:   int(base[len(base)-1]),
+					})
+				} else {
+					// Plain number - treat as its own group
+					letterGroups[base] = append(letterGroups[base], &testFile{
+						inContent:  tf.inContent,
+						outContent: tf.outContent,
+						ansContent: tf.ansContent,
+						groupKey:   base,
+						subIndex:   0,
+					})
+				}
+			}
+
+			// Sort group keys numerically
+			groupKeys := make([]string, 0, len(letterGroups))
+			for k := range letterGroups {
+				groupKeys = append(groupKeys, k)
+			}
+			sort.Slice(groupKeys, func(i, j int) bool {
+				vi, _ := strconv.Atoi(groupKeys[i])
+				vj, _ := strconv.Atoi(groupKeys[j])
+				return vi < vj
+			})
+
+			for _, groupKey := range groupKeys {
+				files := letterGroups[groupKey]
+				sort.Slice(files, func(i, j int) bool {
+					return files[i].subIndex < files[j].subIndex
+				})
+
+				groupIdx := len(groups) + 1
+				groupMap[groupKey] = groupIdx
+				groups = append(groups, groupInfo{cases: []int{}, score: 0})
+
+				for _, tf := range files {
+					idx++
+					outContent := tf.ansContent
+					if (outContent == nil || len(outContent) == 0) && tf.outContent != nil {
+						outContent = tf.outContent
+					}
+					if outContent == nil || len(outContent) == 0 {
+						continue
+					}
+
+					inPath := filepath.Join(problemDir, fmt.Sprintf("%d.in", idx))
+					if err := os.WriteFile(inPath, tf.inContent, 0644); err != nil {
+						http.Error(w, fmt.Sprintf("Failed to write %s: %v", inPath, err), http.StatusInternalServerError)
+						return
+					}
+					ansPath := filepath.Join(problemDir, fmt.Sprintf("%d.ans", idx))
+					if err := os.WriteFile(ansPath, outContent, 0644); err != nil {
+						http.Error(w, fmt.Sprintf("Failed to write %s: %v", ansPath, err), http.StatusInternalServerError)
+						return
+					}
+
+					testCases = append(testCases, testCaseConfig{
+						InputFile:  fmt.Sprintf("%d.in", idx),
+						OutputFile: fmt.Sprintf("%d.ans", idx),
+						GroupID:    groupIdx,
+					})
+					groups[groupIdx-1].cases = append(groups[groupIdx-1].cases, idx)
+				}
+			}
+		} else {
+			// Pure simple numeric pattern - each base is its own test case, one group per case
+			for _, base := range bases {
+				tf := firstPassMap[base]
+				idx++
+
+				// Use ansContent if exists, otherwise use outContent
+				outContent := tf.ansContent
+				if (outContent == nil || len(outContent) == 0) && tf.outContent != nil {
+					outContent = tf.outContent
+				}
+				if outContent == nil || len(outContent) == 0 {
+					http.Error(w, fmt.Sprintf("No answer/output for test case %s", base), http.StatusBadRequest)
+					return
+				}
+				if tf.inContent == nil || len(tf.inContent) == 0 {
+					http.Error(w, fmt.Sprintf("No input for test case %s", base), http.StatusBadRequest)
+					return
+				}
+
+				groupIdx := len(groups) + 1
+				groupMap[base] = groupIdx
+				groups = append(groups, groupInfo{cases: []int{idx}, score: 0})
+
+				inPath := filepath.Join(problemDir, fmt.Sprintf("%d.in", idx))
+				if err := os.WriteFile(inPath, tf.inContent, 0644); err != nil {
+					http.Error(w, fmt.Sprintf("Failed to write %s: %v", inPath, err), http.StatusInternalServerError)
+					return
+				}
+				ansPath := filepath.Join(problemDir, fmt.Sprintf("%d.ans", idx))
+				if err := os.WriteFile(ansPath, outContent, 0644); err != nil {
+					http.Error(w, fmt.Sprintf("Failed to write %s: %v", ansPath, err), http.StatusInternalServerError)
+					return
+				}
+
+				testCases = append(testCases, testCaseConfig{
+					InputFile:  fmt.Sprintf("%d.in", idx),
+					OutputFile: fmt.Sprintf("%d.ans", idx),
+					GroupID:    groupIdx,
+				})
+			}
+		}
+	}
+
+	// Calculate scores evenly across groups
+	totalScore := 100
+	for i := range groups {
+		groups[i].score = calcScore(totalScore, len(groups), i)
+	}
+
+	// Build test_groups for config.json
+	testGroups := make([]map[string]interface{}, 0, len(groups))
+	for _, g := range groups {
 		testGroups = append(testGroups, map[string]interface{}{
-			"cases": []int{idx},
-			"score": calcScore(100, len(bases), i),
+			"cases": g.cases,
+			"score": g.score,
 		})
 	}
 
-	// Write config.json with one group per test case
+	// Write config.json
 	config := map[string]interface{}{
 		"test_cases": testGroups,
 	}
@@ -446,7 +817,7 @@ func ImportDataZipHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update database
-	problem.TestsCount = len(bases)
+	problem.TestsCount = idx
 	if err := db.Save(&problem).Error; err != nil {
 		http.Error(w, fmt.Sprintf("Failed to update problem: %v", err), http.StatusInternalServerError)
 		return
@@ -454,11 +825,13 @@ func ImportDataZipHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":     "success",
-		"problem_id": problemID,
-		"test_count": len(bases),
-		"tests":      testCases,
-		"message":    fmt.Sprintf("Successfully imported %d test cases", len(bases)),
+		"status":      "success",
+		"problem_id":  problemID,
+		"test_count":  idx,
+		"group_count": len(groups),
+		"tests":       testCases,
+		"groups":      testGroups,
+		"message":     fmt.Sprintf("Successfully imported %d test cases in %d groups", idx, len(groups)),
 	})
 }
 
@@ -715,5 +1088,67 @@ func CreateProblemHandler(w http.ResponseWriter, r *http.Request) {
 		"title":      title,
 		"test_count": testCount,
 		"message":    "Problem created successfully",
+	})
+}
+
+// ImportCDFHandler imports problems from a CDF zip file.
+// The zip should contain a *.cdf file and a data folder with test data.
+func ImportCDFHandler(w http.ResponseWriter, r *http.Request) {
+	currentUser := manage.CurrentUsername(r)
+	if !manage.CheckUserPermission(currentUser, "EditPermission") {
+		http.Error(w, "permission denied", http.StatusForbidden)
+		return
+	}
+
+	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get uploaded file: %v", err), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	if filepath.Ext(header.Filename) != ".zip" {
+		http.Error(w, "Only .zip files are allowed", http.StatusBadRequest)
+		return
+	}
+
+	// Save zip to temp file
+	tempDir, err := os.MkdirTemp("", "cdf-import-*")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create temp dir: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer os.RemoveAll(tempDir)
+
+	zipPath := filepath.Join(tempDir, "cdf.zip")
+	dst, err := os.Create(zipPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create temp file: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if _, err := io.Copy(dst, file); err != nil {
+		dst.Close()
+		http.Error(w, fmt.Sprintf("Failed to save zip: %v", err), http.StatusInternalServerError)
+		return
+	}
+	dst.Close()
+
+	// Import using tuack package
+	result, err := tuack.ImportCDFPackage(zipPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to import CDF package: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "success",
+		"problems": result.Problems,
+		"message":  result.Message,
 	})
 }

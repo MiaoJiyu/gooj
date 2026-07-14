@@ -463,76 +463,75 @@
                 document.getElementById('content').style.display = 'block';
                 
                 // 填充基本信息
-                document.getElementById('submissionId').textContent = submission.ID;
-                document.getElementById('username').textContent = submission.Username;
-                document.getElementById('problem').textContent = submission.ProblemID;
-                document.getElementById('createdAt').textContent = formatDateTime(submission.CreatedAt);
-                document.getElementById('updatedAt').textContent = formatDateTime(submission.UpdatedAt);
+                document.getElementById('submissionId').textContent = submission.id;
+                document.getElementById('username').textContent = submission.username;
+                document.getElementById('problem').textContent = submission.problem_id;
+                document.getElementById('createdAt').textContent = formatDateTime(submission.created_at);
+                document.getElementById('updatedAt').textContent = formatDateTime(submission.updated_at);
                 
                 // 状态徽章
                 const statusBadge = document.getElementById('statusBadge');
-                statusBadge.textContent = formatStatus(submission.Status);
-                statusBadge.className = `status-badge ${formatStatusClass(submission.Status)}`;
+                statusBadge.textContent = formatStatus(submission.status);
+                statusBadge.className = `status-badge ${formatStatusClass(submission.status)}`;
                 
                 // 显示代码部分（仅限edit管理员和用户本人）
                 const codeSection = document.getElementById('codeSection');
                 codeSection.style.display = 'block';
-                document.getElementById('codeContent').textContent = submission.Code;
+                document.getElementById('codeContent').textContent = submission.code;
                 
                 // 填充测试点
                 const testsBody = document.getElementById('testsBody');
                 testsBody.innerHTML = '';
                 
-                if (submission.TestResults && submission.TestResults.length > 0) {
-                    submission.TestResults.forEach((test, index) => {
+                if (submission.test_results && submission.test_results.length > 0) {
+                    submission.test_results.forEach((test, index) => {
                         const row = document.createElement('tr');
                         row.className = 'test-row';
-                        row.onclick = () => toggleTestDetail(test.TestIndex);
-                        let statusText = test.Passed ? '通过' : getStatusText(test.Status);
+                        row.onclick = () => toggleTestDetail(test.test_index);
+                        let statusText = test.passed ? '通过' : getStatusText(test.status);
                         row.innerHTML = `
-                            <td>测试点 ${test.TestIndex}</td>
+                            <td>测试点 ${test.test_index}</td>
                             <td>
-                                <span class="${test.Passed ? 'test-passed' : 'test-failed'}">
+                                <span class="${test.passed ? 'test-passed' : 'test-failed'}">
                                     ${statusText}
                                 </span>
                             </td>
-                            <td>${formatTime(test.TimeMs)}</td>
-                            <td>${formatMemory(test.MemoryKB)}</td>
-                            <td>${test.Score}</td>
+                            <td>${formatTime(test.time_ms)}</td>
+                            <td>${formatMemory(test.memory_kb)}</td>
+                            <td>${test.score}</td>
                         `;
                         
                         testsBody.appendChild(row);
                         
                         // 添加详情行
                         const detailRow = document.createElement('tr');
-                        detailRow.id = `testDetail${test.TestIndex}`;
+                        detailRow.id = `testDetail${test.test_index}`;
                         detailRow.className = 'test-detail';
                         
-                        let outputContent = test.Output || '(无输出)';
-                        let expectedContent = test.Expected || '(无预期输出)';
+                        let outputContent = test.output || '(无输出)';
                         
-                        let detailStatusText = test.Passed ? '通过' : getStatusText(test.Status);
+                        let detailStatusText = test.passed ? '通过' : getStatusText(test.status);
                         detailRow.innerHTML = `
                             <td colspan="5">
                                 <div class="test-detail-content">
                                     <div class="detail-grid">
                                         <div class="info-item">
                                             <span class="info-label">测试点</span>
-                                            <span class="info-value">${test.TestIndex}</span>
+                                            <span class="info-value">${test.test_index}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label">状态</span>
-                                            <span class="info-value ${test.Passed ? 'test-passed' : 'test-failed'}">
+                                            <span class="info-value ${test.passed ? 'test-passed' : 'test-failed'}">
                                                 ${detailStatusText}
                                             </span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label">运行时间</span>
-                                            <span class="info-value">${formatTime(test.TimeMs)}</span>
+                                            <span class="info-value">${formatTime(test.time_ms)}</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="info-label">内存使用</span>
-                                            <span class="info-value">${formatMemory(test.MemoryKB)}</span>
+                                            <span class="info-value">${formatMemory(test.memory_kb)}</span>
                                         </div>
                                     </div>
                                     

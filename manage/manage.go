@@ -122,20 +122,38 @@ func ListUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 	currentUser := CurrentUsername(r)
 
+	// Only select fields needed (avoid selecting large Password and Bio fields)
+	selectFields := "id, username, group_name, rating, role, created_at, approved, approved_at, approved_by"
 	if !CheckUserPermission(currentUser, "GroupPermission") {
-		if err := db.Preload("Group").Where(&sql_service.User{CreatedBy: currentUser}).Find(&users).Error; err != nil {
+		if err := db.Preload("Group").Select(selectFields).Where(&sql_service.User{CreatedBy: currentUser}).Find(&users).Error; err != nil {
 			http.Error(w, "failed to fetch users", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		if err := db.Preload("Group").Find(&users).Error; err != nil {
+		if err := db.Preload("Group").Select(selectFields).Find(&users).Error; err != nil {
 			http.Error(w, "failed to fetch users", http.StatusInternalServerError)
 			return
 		}
 	}
 
+	// Return safe user info only (exclude password, bio and internal fields)
+	safeUsers := make([]map[string]interface{}, len(users))
+	for i, u := range users {
+		safeUsers[i] = map[string]interface{}{
+			"id":          u.ID,
+			"username":    u.Username,
+			"group_name":  u.GroupName,
+			"rating":      u.Rating,
+			"role":        u.Role,
+			"created_at":  u.CreatedAt,
+			"approved":    u.Approved,
+			"approved_at": u.ApprovedAt,
+			"approved_by": u.ApprovedBy,
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(users)
+	_ = json.NewEncoder(w).Encode(safeUsers)
 }
 
 // ListGroupsHandler returns all groups and their details (public access for registration)

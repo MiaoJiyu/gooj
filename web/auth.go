@@ -157,45 +157,90 @@ func GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 // GetAllUsersHandler returns all users (for registration creator selection)
 func GetAllUsersHandler(w http.ResponseWriter, r *http.Request) {
 	var users []sql_service.User
-	if err := sql_service.DB().Preload("Group").Find(&users).Error; err != nil {
+	// Only select fields needed (avoid selecting large Password and Bio fields)
+	selectFields := "id, username, group_name, rating, role, created_at"
+	if err := sql_service.DB().Preload("Group").Select(selectFields).Find(&users).Error; err != nil {
 		http.Error(w, "failed to get all users", http.StatusInternalServerError)
 		return
 	}
 
+	// Return safe user info only
+	safeUsers := make([]map[string]interface{}, len(users))
+	for i, u := range users {
+		safeUsers[i] = map[string]interface{}{
+			"id":         u.ID,
+			"username":   u.Username,
+			"group_name": u.GroupName,
+			"rating":     u.Rating,
+			"role":       u.Role,
+			"created_at": u.CreatedAt,
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"users": users,
-		"total": len(users),
+		"users": safeUsers,
+		"total": len(safeUsers),
 	})
 }
 
 // GetPendingUsersHandler returns list of users waiting for approval
 func GetPendingUsersHandler(w http.ResponseWriter, r *http.Request) {
 	var users []sql_service.User
-	if err := sql_service.DB().Preload("Group").Where("approved = ?", false).Find(&users).Error; err != nil {
+	// Only select fields needed (avoid selecting large Password and Bio fields)
+	selectFields := "id, username, group_name, rating, role, created_at"
+	if err := sql_service.DB().Preload("Group").Select(selectFields).Where("approved = ?", false).Find(&users).Error; err != nil {
 		http.Error(w, "failed to get pending users", http.StatusInternalServerError)
 		return
 	}
 
+	// Return safe user info only (no password, no internal fields)
+	safeUsers := make([]map[string]interface{}, len(users))
+	for i, u := range users {
+		safeUsers[i] = map[string]interface{}{
+			"id":         u.ID,
+			"username":   u.Username,
+			"group_name": u.GroupName,
+			"rating":     u.Rating,
+			"role":       u.Role,
+			"created_at": u.CreatedAt,
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"users": users,
-		"total": len(users),
+		"users": safeUsers,
+		"total": len(safeUsers),
 	})
 }
 
 // GetApprovedUsersHandler returns list of approved users
 func GetApprovedUsersHandler(w http.ResponseWriter, r *http.Request) {
 	var users []sql_service.User
-	if err := sql_service.DB().Preload("Group").Where("approved = ?", true).Find(&users).Error; err != nil {
+	// Only select fields needed (avoid selecting large Password and Bio fields)
+	selectFields := "id, username, group_name, rating, role, created_at"
+	if err := sql_service.DB().Preload("Group").Select(selectFields).Where("approved = ?", true).Find(&users).Error; err != nil {
 		http.Error(w, "failed to get approved users", http.StatusInternalServerError)
 		return
 	}
 
+	// Return safe user info only
+	safeUsers := make([]map[string]interface{}, len(users))
+	for i, u := range users {
+		safeUsers[i] = map[string]interface{}{
+			"id":         u.ID,
+			"username":   u.Username,
+			"group_name": u.GroupName,
+			"rating":     u.Rating,
+			"role":       u.Role,
+			"created_at": u.CreatedAt,
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"users": users,
-		"total": len(users),
+		"users": safeUsers,
+		"total": len(safeUsers),
 	})
 }
 

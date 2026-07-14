@@ -67,9 +67,25 @@ func ProblemsHandler(w http.ResponseWriter, r *http.Request) {
 
 	var probs []sql_service.Problem
 	offset := (page - 1) * per
-	query.Order("id asc").Offset(offset).Limit(per).Find(&probs)
+	// Only select fields needed for list view (avoid selecting large Description field)
+	query.Select("id, title, tests_count, time_limit_ms, mem_limit_mb, problem_visible, test_visible").
+		Order("id asc").Offset(offset).Limit(per).Find(&probs)
 
-	out := map[string]interface{}{"problems": probs, "total": total, "page": page, "per": per}
+	// Return only necessary fields for problem list (exclude Description which can be large)
+	safeProbs := make([]map[string]interface{}, len(probs))
+	for i, p := range probs {
+		safeProbs[i] = map[string]interface{}{
+			"id":              p.ID,
+			"title":           p.Title,
+			"tests_count":     p.TestsCount,
+			"time_limit_ms":   p.TimeLimitMs,
+			"mem_limit_mb":    p.MemLimitMB,
+			"problem_visible": p.ProblemVisible,
+			"test_visible":    p.TestVisible,
+		}
+	}
+
+	out := map[string]interface{}{"problems": safeProbs, "total": total, "page": page, "per": per}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
 }

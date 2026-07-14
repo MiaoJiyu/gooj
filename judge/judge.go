@@ -64,8 +64,8 @@ func JudgeTest(cfg JudgeConfig) JudgeResult {
 	// Prepare Docker command with time and memory limits
 	absTmp, _ := filepath.Abs(cfg.WorkTmpPath)
 
-	shellCmd := fmt.Sprintf("/usr/bin/time -v -o time.log bash -c \"ulimit -t %d -m %d -s %d; ./solution < in.in > out.out 2>runtime.err; echo $? > rc; \" ", int(cfg.TimeLimit+1), cfg.MemLimit*1100, cfg.MemLimit*1100)
-	// shellCmd := "/usr/bin/time -v -o time.log ./solution < in.in > out.out 2>runtime.err; echo $? > rc; cat out.out"
+	// Simple shell command - run solution with ulimit for backup time limit
+	shellCmd := fmt.Sprintf("/usr/bin/time -v -o time.log ./solution < in.in > out.out 2>runtime.err; echo $? > rc")
 	dockerArgs := []string{
 		"run", "--rm",
 		"-v", absTmp + ":/work",
@@ -78,7 +78,8 @@ func JudgeTest(cfg JudgeConfig) JudgeResult {
 		"bash", "-lc", shellCmd,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.TimeLimit+5)*time.Second)
+	// Use context timeout for 2x time limit + buffer
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(int(cfg.TimeLimit*2)+5)*time.Second)
 	cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
 	var outb bytes.Buffer
 	var errb bytes.Buffer
@@ -94,7 +95,6 @@ func JudgeTest(cfg JudgeConfig) JudgeResult {
 		if err != nil {
 			return 0, 0
 		}
-		// fmt.Printf("time log:\n%s\n", string(data))
 		text := string(data)
 		memRe := regexp.MustCompile(`Maximum resident set size \(kbytes\):\s*(\d+)`)
 		if m := memRe.FindStringSubmatch(text); len(m) >= 2 {
@@ -371,11 +371,18 @@ func processJob(sub sql_service.Submission) {
 			// } else if v, ok := obj["tests_count"].(float64); ok {
 			// 	tests = int(v)
 			// }
-			// time limit: accept time_limit (seconds) or time_limit_ms (milliseconds)
-			if v, ok := obj["time_limit_ms"].(float64); ok {
+			// time limit: accept time_limit (milliseconds, common in Chinese OI problems)
+			// or time_limit_s/time_limit (seconds)
+			if v, ok := obj["time_limit"].(float64); ok {
+				// Most config files use milliseconds (1000 = 1 second)
+				// If value > 100, assume it's in milliseconds
+				if v > 100 {
+					timeLimit = v / 1000.0
+				} else {
+					timeLimit = v
+				}
+			} else if v, ok := obj["time_limit_ms"].(float64); ok {
 				timeLimit = v / 1000.0
-			} else if v, ok := obj["time_limit"].(float64); ok {
-				timeLimit = v
 			} else if v, ok := obj["time_limit_s"].(float64); ok {
 				timeLimit = v
 			}
@@ -401,7 +408,7 @@ func processJob(sub sql_service.Submission) {
 	dockerCompileArgs := []string{"run", "--rm", "-v", absTmp + ":/work", "-w", "/work", "--network", "none", "--memory", fmt.Sprintf("%dm", compileMem), "--cpus", "1.0", "gcc-with-time", "bash", "-lc", fmt.Sprintf("%v", compileCmd)}
 	// dockerCompileArgs := []string{"run", "--rm", "-v", absTmp + ":/work", "-w", "/work", "--network", "none", "--memory", fmt.Sprintf("%dm", compileMem), "--cpus", "1.0", "gcc:12", "bash", "-lc", compileCmd}
 	// increase compile timeout to allow for image/pulled layers and heavier builds
-	cctx, ccancel := context.WithTimeout(context.Background(), 20*time.Second)
+	cctx, ccancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer ccancel()
 	ccmd := exec.CommandContext(cctx, "docker", dockerCompileArgs...)
 	var cerr bytes.Buffer

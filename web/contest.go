@@ -49,7 +49,7 @@ func ListContestsHandler(w http.ResponseWriter, r *http.Request) {
 
 		problems, err := sql_service.ListContestProblems(contest.ID)
 		if err != nil {
-			problems = []sql_service.Problem{}
+			problems = []sql_service.ContestProblemInfo{}
 		}
 		contestInfo := map[string]interface{}{
 			"id": contest.ID,

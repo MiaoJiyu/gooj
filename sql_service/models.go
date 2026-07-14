@@ -10,7 +10,8 @@ type User struct {
 	Role       string `gorm:"size:32;default:'user'"`                // user, admin, teacher
 	Group      Group  `gorm:"foreignKey:GroupName;references:Name;"` // User group
 	GroupName  string
-	Rating     int `gorm:"default:1500"` // User rating, default 1500
+	Rating     int    `gorm:"default:1500"` // User rating, default 1500
+	Bio        string `gorm:"type:text"`    // User biography in markdown format
 	CreatedAt  time.Time
 	CreatedBy  string     `gorm:"size:128"`      // Username of the creator
 	Approved   bool       `gorm:"default:false"` // Whether the user is approved by creator
@@ -36,59 +37,59 @@ type Group struct {
 
 // Submission model represents a code submission
 type Submission struct {
-	ID          uint   `gorm:"primaryKey"`
-	Username    string `gorm:"index;size:128"`
-	ProblemID   uint   `gorm:"index"`
-	Code        string `gorm:"type:text"`
-	Status      string `gorm:"size:32"` // queued, running, ok, wa, tle, mle, compile_error, runtime_error
-	Score       int    // Total score obtained
-	MaxMemoryKB int    // Maximum memory usage in KB
-	MaxTimeMs   int    // Maximum time usage in ms
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	TestResults []TestResult `gorm:"foreignKey:SubmissionID"`
+	ID          uint         `json:"id" gorm:"primaryKey"`
+	Username    string       `json:"username" gorm:"index;size:128"`
+	ProblemID   uint         `json:"problem_id" gorm:"index"`
+	Code        string       `json:"code" gorm:"type:text"`
+	Status      string       `json:"status" gorm:"size:32"` // queued, running, ok, wa, tle, mle, compile_error, runtime_error
+	Score       int          `json:"score"`                 // Total score obtained
+	MaxMemoryKB int          `json:"max_memory_kb"`         // Maximum memory usage in KB
+	MaxTimeMs   int          `json:"max_time_ms"`           // Maximum time usage in ms
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
+	TestResults []TestResult `json:"test_results" gorm:"foreignKey:SubmissionID"`
 }
 
 // TestResult model represents the result of a test case
 type TestResult struct {
-	ID           uint `gorm:"primaryKey"`
-	SubmissionID uint `gorm:"index"`
-	TestIndex    int  `gorm:"column:test_index"`
-	Passed       bool
-	Output       string `gorm:"type:text"`
-	TimeMs       int
-	MemoryKB     int
-	Status       string `gorm:"size:32"`
-	Score        int    // Score for this test case
+	ID           uint   `json:"id" gorm:"primaryKey"`
+	SubmissionID uint   `json:"submission_id" gorm:"index"`
+	TestIndex    int    `json:"test_index" gorm:"column:test_index"`
+	Passed       bool   `json:"passed"`
+	Output       string `json:"output" gorm:"type:text"`
+	TimeMs       int    `json:"time_ms"`
+	MemoryKB     int    `json:"memory_kb"`
+	Status       string `json:"status" gorm:"size:32"`
+	Score        int    `json:"score"` // Score for this test case
 }
 
 // Problem model represents a coding problem
 type Problem struct {
-	ID uint `gorm:"primaryKey"`
+	ID uint `json:"id" gorm:"primaryKey"`
 	// Name        string `gorm:"uniqueIndex;size:128"`
-	Title          string `gorm:"size:256"`
-	Description    string `gorm:"type:text"`
-	TestsCount     int
-	TimeLimitMs    int
-	MemLimitMB     int
-	ProblemVisible bool `gorm:"default:false"` // If false, non-editors cannot view the problem until contest starts
-	TestVisible    bool `gorm:"default:false"` // If false, non-editors cannot see evaluation info (test results, scores, etc.)
+	Title          string `json:"title" gorm:"size:256"`
+	Description    string `json:"description" gorm:"type:text"`
+	TestsCount     int    `json:"tests_count"`
+	TimeLimitMs    int    `json:"time_limit_ms"`
+	MemLimitMB     int    `json:"mem_limit_mb"`
+	ProblemVisible bool   `json:"problem_visible" gorm:"default:false"` // If false, non-editors cannot view the problem until contest starts
+	TestVisible    bool   `json:"test_visible" gorm:"default:false"`    // If false, non-editors cannot see evaluation info (test results, scores, etc.)
 }
 
 // Contest represents a contest with an associated problem set and a leaderboard.
 type Contest struct {
-	ID uint `gorm:"primaryKey"`
+	ID uint `json:"id" gorm:"primaryKey"`
 	// Name        string    `gorm:"uniqueIndex;size:128"`
-	Title       string    `gorm:"size:256"`
-	Description string    `gorm:"type:text"`
-	StartAt     time.Time `gorm:"index"`
-	EndAt       time.Time `gorm:"index"`
-	Groups      []Group   `gorm:"many2many:contest_groups;"`
+	Title       string    `json:"title" gorm:"size:256"`
+	Description string    `json:"description" gorm:"type:text"`
+	StartAt     time.Time `json:"start_at" gorm:"index"`
+	EndAt       time.Time `json:"end_at" gorm:"index"`
+	Groups      []Group   `json:"-" gorm:"many2many:contest_groups;"`
 	// Type        string    `gorm:"size:32"` // NOI, IOI etc.
-	Problems      []Problem `gorm:"many2many:contest_problems;"`
-	CreatedBy     string    `gorm:"size:128"`
-	CreatedAt     time.Time
-	RatingSettled bool `gorm:"default:false"` // Marked true when rating settlement is complete (only once, even on failure)
+	Problems      []Problem `json:"-" gorm:"many2many:contest_problems;"`
+	CreatedBy     string    `json:"created_by" gorm:"size:128"`
+	CreatedAt     time.Time `json:"created_at"`
+	RatingSettled bool      `json:"rating_settled" gorm:"default:false"` // Marked true when rating settlement is complete (only once, even on failure)
 }
 
 // ContestRatingHistory records rating changes after a contest ends.

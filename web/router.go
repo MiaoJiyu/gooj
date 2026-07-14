@@ -74,6 +74,9 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/upload_problem", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/upload_problem.html")
 	}).Methods("GET")
+	r.HandleFunc("/import_cdf", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "static/import_cdf.html")
+	}).Methods("GET")
 	r.HandleFunc("/create_problem", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "static/create_problem.html")
 	}).Methods("GET")
@@ -125,6 +128,8 @@ func NewRouter() http.Handler {
 	// Import tuack package from zip file
 	r.HandleFunc("/api/import_tuack", edit.ImportTuackHandler).Methods("POST")
 	r.HandleFunc("/api/import_data_zip", edit.ImportDataZipHandler).Methods("POST")
+	// Import CDF (contest data file) zip containing *.cdf and data folder
+	r.HandleFunc("/api/import_cdf", edit.ImportCDFHandler).Methods("POST")
 
 	// Upload problem endpoint
 	r.HandleFunc("/api/upload_problem", UploadProblemHandler).Methods("POST")
@@ -144,6 +149,8 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/api/user/{username}/rating", UpdateUserRatingHandler).Methods("POST")
 	r.HandleFunc("/api/user/{username}/submissions", GetUserSubmissionsHandler).Methods("GET")
 	r.HandleFunc("/api/user/{username}/solved", GetUserSolvedProblemsHandler).Methods("GET")
+	r.HandleFunc("/api/user/{username}/bio", GetUserBioHandler).Methods("GET")
+	r.HandleFunc("/api/user/{username}/bio", UpdateUserBioHandler).Methods("POST")
 
 	// Redirect /user_profile to the current user's profile page
 	r.HandleFunc("/user_profile", func(w http.ResponseWriter, r *http.Request) {

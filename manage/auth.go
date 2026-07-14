@@ -40,7 +40,7 @@ func tokenServer() {
 			valid := exists && !time.Now().After(info.Expiry)
 			if valid {
 				// refresh expiry
-				info.Expiry = time.Now().Add(60 * time.Minute)
+				info.Expiry = time.Now().Add(180 * time.Minute)
 				store[op.token] = info
 			}
 			if op.result != nil {
@@ -113,7 +113,7 @@ func generateToken() string {
 
 func GenerateToken(username string) (string, time.Time) {
 	token := generateToken()
-	expiry := time.Now().Add(60 * time.Minute)
+	expiry := time.Now().Add(180 * time.Minute)
 	result := make(chan tokenOpResult)
 	tokenOpChan <- tokenOp{
 		op:     tokenOpSet,

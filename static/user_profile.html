@@ -5,7 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>用户主页 - Gooj</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/katex.min.css" crossorigin="anonymous">
     <script src="/static/common.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/katex.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js" crossorigin="anonymous"></script>
     <style>
         .profile-header {
             display: flex;
@@ -77,6 +80,120 @@
             padding-left: 12px;
             margin-bottom: 16px;
             font-size: 18px;
+        }
+        .bio-container {
+            background: #f9fafb;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #e5e7eb;
+        }
+        .bio-editor {
+            width: 100%;
+            min-height: 150px;
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        .bio-preview {
+            background: white;
+            padding: 16px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            min-height: 100px;
+            line-height: 1.6;
+        }
+        .bio-preview h1, .bio-preview h2, .bio-preview h3 {
+            margin-top: 0;
+        }
+        .bio-preview code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        .bio-preview pre {
+            background: #f3f4f6;
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        .bio-preview pre code {
+            background: none;
+            padding: 0;
+        }
+        .bio-preview .md-table {
+            border-collapse: collapse;
+            margin: 12px 0;
+            width: auto;
+            border: 1px solid #d1d5db;
+        }
+        .bio-preview .md-table td,
+        .bio-preview .md-table th {
+            border: 1px solid #d1d5db;
+            padding: 8px 12px;
+        }
+        .bio-preview .md-table tr:first-child td {
+            background: #f3f4f6;
+            font-weight: bold;
+        }
+        .bio-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .bio-tab {
+            padding: 8px 16px;
+            border: none;
+            background: #e5e7eb;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .bio-tab.active {
+            background: #4CAF50;
+            color: white;
+        }
+        .bio-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .bio-save-btn {
+            padding: 8px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .bio-save-btn:hover {
+            background: #43a047;
+        }
+        .bio-save-btn:disabled {
+            background: #a5d6a7;
+            cursor: not-allowed;
+        }
+        .bio-edit-btn {
+            padding: 8px 20px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .bio-edit-btn:hover {
+            background: #1976D2;
+        }
+        .no-bio {
+            color: #9ca3af;
+            font-style: italic;
         }
         .group-info {
             background: #f9fafb;
@@ -218,6 +335,30 @@
             </div>
         </div>
 
+        <div class="section" id="bio-section" style="display:none;">
+            <h2>个人简介</h2>
+            <div class="bio-container">
+                <div id="bio-view" style="display:none;">
+                    <div id="bio-display" class="bio-preview"></div>
+                    <div class="bio-actions">
+                        <button class="bio-edit-btn" id="bio-edit-btn" onclick="showBioEdit()">编辑简介</button>
+                    </div>
+                </div>
+                <div id="bio-edit-container" style="display:none;">
+                    <div class="bio-tabs">
+                        <button class="bio-tab active" id="tab-edit" onclick="showTab('edit')">编辑</button>
+                        <button class="bio-tab" id="tab-preview" onclick="showTab('preview')">预览</button>
+                    </div>
+                    <textarea id="bio-editor" class="bio-editor" placeholder="在这里编辑你的个人简介（支持Markdown格式）..."></textarea>
+                    <div id="bio-preview" class="bio-preview" style="display:none;"></div>
+                    <div class="bio-actions">
+                        <button class="bio-save-btn" id="bio-save-btn" onclick="saveBio()">保存</button>
+                        <button class="bio-tab" onclick="cancelBioEdit()">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="section">
             <h2>通过的题目</h2>
             <div class="problem-list" id="solved-problems">
@@ -235,9 +376,13 @@
     </div>
 
     <script>
-        // Get username from URL path
+        // Get username from URL path (decode to handle non-ASCII usernames)
         const pathParts = window.location.pathname.split('/');
-        const username = pathParts[pathParts.length - 1] || 'Unknown';
+        const username = decodeURIComponent(pathParts[pathParts.length - 1]) || 'Unknown';
+        
+        // Debug: show current values
+        console.log('URL username:', username);
+        console.log('localStorage username:', localStorage.getItem('username'));
 
         // Update avatar with first letter
         document.getElementById('avatar').textContent = username.charAt(0).toUpperCase();
@@ -339,9 +484,271 @@
                 .then(permData => {
                     if (permData.permited || currentUser === username) {
                         document.getElementById('resetPwBtn').style.display = 'inline-block';
+                        hasEditPermission = permData.permited;
                     }
                 })
                 .catch(() => {});
+        }
+
+        // Load user bio
+        function loadBio() {
+            const currentUser = localStorage.getItem('username');
+            if (!currentUser) return;
+
+            // Check permission: own profile or EditPermission
+            fetch('/api/user_permissions?username=' + encodeURIComponent(currentUser) + '&permission=EditPermission')
+                .then(res => res.ok ? res.json() : { permited: false })
+                .then(permData => {
+                    console.log('loadBio permData:', permData, 'currentUser:', currentUser, 'username:', username);
+                    if (permData.permited || currentUser === username) {
+                        document.getElementById('bio-section').style.display = 'block';
+                        hasEditPermission = permData.permited;
+                        fetchBio();
+                    }
+                })
+                .catch(e => console.error('loadBio error:', e));
+        }
+
+        function fetchBio() {
+            fetch('/api/user/' + encodeURIComponent(username) + '/bio')
+                .then(res => {
+                    if (!res.ok) {
+                        console.error('fetchBio failed:', res.status, res.statusText);
+                        return { bio: '' };
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    const bioDisplay = document.getElementById('bio-display');
+                    const bioView = document.getElementById('bio-view');
+                    const bioEditContainer = document.getElementById('bio-edit-container');
+                    const currentUser = localStorage.getItem('username');
+                    const canEdit = currentUser === username || hasEditPermission;
+
+                    if (data.bio && data.bio.trim()) {
+                        bioDisplay.innerHTML = simpleMarkdown(data.bio);
+                    } else {
+                        bioDisplay.innerHTML = '<p class="no-bio">暂无个人简介</p>';
+                    }
+                    
+                    // Render LaTeX math
+                    if (typeof renderMathInElement !== 'undefined') {
+                        renderMathInElement(bioDisplay, {
+                            delimiters: [
+                                {left: '$$', right: '$$', display: true},
+                                {left: '$', right: '$', display: false},
+                                {left: '\\(', right: '\\)', display: false},
+                                {left: '\\[', right: '\\]', display: true}
+                            ],
+                            throwOnError: false
+                        });
+                    }
+
+                    if (canEdit) {
+                        document.getElementById('bio-edit-btn').style.display = 'inline-block';
+                    }
+                    bioView.style.display = 'block';
+                    bioEditContainer.style.display = 'none';
+                })
+                .catch(e => console.error('fetchBio error:', e));
+        }
+
+        var hasEditPermission = false;
+
+        function showBioEdit() {
+            document.getElementById('bio-view').style.display = 'none';
+            document.getElementById('bio-edit-container').style.display = 'block';
+            document.getElementById('bio-editor').value = '';
+
+            // Fetch current bio content
+            fetch('/api/user/' + encodeURIComponent(username) + '/bio')
+                .then(res => res.ok ? res.json() : { bio: '' })
+                .then(data => {
+                    document.getElementById('bio-editor').value = data.bio || '';
+                })
+                .catch(() => {});
+
+            showTab('edit');
+        }
+
+        function showTab(tab) {
+            const isEdit = tab === 'edit';
+            document.getElementById('tab-edit').classList.toggle('active', isEdit);
+            document.getElementById('tab-preview').classList.toggle('active', !isEdit);
+            document.getElementById('bio-editor').style.display = isEdit ? 'block' : 'none';
+            document.getElementById('bio-preview').style.display = isEdit ? 'none' : 'block';
+
+            if (!isEdit) {
+                // Update preview
+                const bio = document.getElementById('bio-editor').value;
+                const previewEl = document.getElementById('bio-preview');
+                previewEl.innerHTML = simpleMarkdown(bio) || '<p class="no-bio">预览为空</p>';
+                // Render LaTeX math in preview
+                if (typeof renderMathInElement !== 'undefined') {
+                    renderMathInElement(previewEl, {
+                        delimiters: [
+                            {left: '$$', right: '$$', display: true},
+                            {left: '$', right: '$', display: false},
+                            {left: '\\(', right: '\\)', display: false},
+                            {left: '\\[', right: '\\]', display: true}
+                        ],
+                        throwOnError: false
+                    });
+                }
+            }
+        }
+
+        function cancelBioEdit() {
+            document.getElementById('bio-view').style.display = 'block';
+            document.getElementById('bio-edit-container').style.display = 'none';
+        }
+
+        async function saveBio() {
+            const bio = document.getElementById('bio-editor').value;
+            const saveBtn = document.getElementById('bio-save-btn');
+            saveBtn.disabled = true;
+            saveBtn.textContent = '保存中...';
+
+            try {
+                const res = await fetch('/api/user/' + encodeURIComponent(username) + '/bio', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bio })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                alert('简介已保存');
+                fetchBio();
+                cancelBioEdit();
+            } catch (e) {
+                alert('保存失败：' + e.message);
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.textContent = '保存';
+            }
+        }
+
+        // Simple markdown parser for preview
+        function simpleMarkdown(text) {
+            if (!text) return '';
+            
+            // First extract and protect code blocks
+            let codeBlocks = [];
+            let codeBlockRegex = /```[\s\S]*?```/g;
+            text = text.replace(codeBlockRegex, function(match) {
+                codeBlocks.push(match);
+                return `__CODE_BLOCK_${codeBlocks.length - 1}__`;
+            });
+            
+            // Process tables first - split by lines and parse table structure
+            let lines = text.split('\n');
+            let result = [];
+            let inTable = false;
+            let tableLines = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                const isSeparator = /^\|[-:\s]+\|$/.test(line);
+                
+                if (line.startsWith('|') && line.endsWith('|') && !isSeparator) {
+                    // Potential table row
+                    if (!inTable) {
+                        inTable = true;
+                        tableLines = [];
+                    }
+                    tableLines.push(line);
+                } else if (isSeparator) {
+                    // Separator line - part of table
+                    if (inTable) {
+                        tableLines.push(line); // Keep for validation
+                    }
+                } else {
+                    // Non-table line
+                    if (inTable && tableLines.length >= 2) {
+                        // Finish processing table
+                        result.push(parseTableMarkdown(tableLines));
+                        tableLines = [];
+                    }
+                    inTable = false;
+                    result.push(line);
+                }
+            }
+            
+            // Handle remaining table at end
+            if (inTable && tableLines.length >= 2) {
+                result.push(parseTableMarkdown(tableLines));
+            }
+            
+            // Now process markdown on non-table lines
+            let html = result.map(line => {
+                if (line.isTable) return line.html;
+                return processMarkdownLine(line);
+            }).join('<br>');
+            
+            // Restore code blocks
+            codeBlocks.forEach((block, i) => {
+                // Convert markdown code block to HTML
+                const codeContent = block.slice(3, -3).replace(/^\n|\n$/g, '');
+                html = html.replace(`__CODE_BLOCK_${i}__`, `<pre><code>${escapeHtml(codeContent)}</code></pre>`);
+            });
+            
+            return html;
+        }
+        
+        function parseTableMarkdown(lines) {
+            // First line is header, second is separator, rest are body
+            const headerLine = lines[0];
+            const bodyLines = lines.slice(2); // Skip separator line
+            
+            const headers = headerLine.split('|').slice(1, -1).map(h => h.trim());
+            
+            let table = '<table class="md-table"><thead><tr>';
+            headers.forEach(h => { table += `<th>${escapeHtml(h)}</th>`; });
+            table += '</tr></thead><tbody>';
+            
+            bodyLines.forEach(rowLine => {
+                const cells = rowLine.split('|').slice(1, -1).map(c => c.trim());
+                table += '<tr>';
+                cells.forEach(cell => { table += `<td>${escapeHtml(cell)}</td>`; });
+                // Fill empty cells if row is shorter than header
+                for (let i = cells.length; i < headers.length; i++) {
+                    table += '<td></td>';
+                }
+                table += '</tr>';
+            });
+            
+            table += '</tbody></table>';
+            return { isTable: true, html: table };
+        }
+        
+        function escapeHtml(text) {
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+        
+        function processMarkdownLine(line) {
+            // Skip table placeholder (already processed)
+            if (line.startsWith('__CODE_BLOCK_')) {
+                return line; // Will be replaced later
+            }
+            
+            let html = escapeHtml(line);
+            
+            // Headers
+            html = html
+                .replace(/^### (.+)$/, '<h3>$1</h3>')
+                .replace(/^## (.+)$/, '<h2>$1</h2>')
+                .replace(/^# (.+)$/, '<h1>$1</h1>');
+            
+            // Bold
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            // Italic
+            html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+            // Inline code
+            html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+            
+            return html;
         }
 
         async function resetPassword() {
@@ -361,6 +768,7 @@
         }
 
         tryShowResetBtn();
+        loadBio();
     </script>
 </body>
 </html>
