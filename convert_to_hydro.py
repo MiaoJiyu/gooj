@@ -21,9 +21,21 @@ Hydro 导入格式 (hydro-compress) 每个题目一个顶层目录 <id>/:
   python3 convert_to_hydro.py
   python3 convert_to_hydro.py --src data/problem --db data/app.db --out data/HydroExport.zip
   python3 convert_to_hydro.py --per-problem --out-dir data/HydroProblems
+  python3 convert_to_hydro.py --owner 2 --pid-prefix C        # 非交互: 固定 owner + PID 前缀
+  python3 convert_to_hydro.py --owner 2 --pid-map pid.json    # 非交互: PID 映射文件
+  python3 convert_to_hydro.py 2 P1132 P1133                   # 位置参数: owner=2, 两题 PID 分别 P1132/P1133
+  python3 convert_to_hydro.py 2 P1132                         # 只给首个 PID, 后续按数字递增: P1132, P1133, P1134 ...
+  python3 convert_to_hydro.py 2                               # 位置参数仅 owner=2, PID 仍逐题交互询问
+
+说明:
+  - owner (HydroOJ 上的用户ID) 与每题的 PID (字符串) 取决于 HydroOJ 实际情况。
+    不传 --owner / --pid-prefix / --pid-map 时, 脚本会交互式询问:
+    owner 只问一次; 每个题目的 PID 单独询问 (默认取 Gooj 数字ID)。
+  - 非 TTY (管道/重定向) 且未提供 --owner/--pid-* 时, owner 默认 1, PID 默认 Gooj 数字ID。
 """
 
 import os
+import re
 import sys
 import json
 import shutil
@@ -133,6 +145,21 @@ def natural_key(name):
     return [int(t) if t.isdigit() else t for t in
             "".join(("1" if c.isdigit() else "0") + c for c in name).split("0")
             if t]
+
+
+def inc_pid(pid, delta):
+    """对 PID 中最后一组连续数字做自增, 保留原数字宽度 (零填充)。
+
+    例: inc_pid('P1132', 1) -> 'P1133'; inc_pid('T05', 2) -> 'T07';
+        无数字时直接末尾拼接: inc_pid('X', 3) -> 'X3'。
+    """
+    m = re.search(r"\d+", pid)
+    if not m:
+        return pid + str(delta)
+    num = int(m.group())
+    width = len(m.group())
+    repl = str(num + delta).zfill(width)
+    return pid[:m.start()] + repl + pid[m.end():]
 
 
 def load_config(src_dir):
@@ -280,7 +307,31 @@ def main():
                     help="每题单独一个 zip, 输出到 --out-dir")
     ap.add_argument("--out-dir", default="data/HydroProblems",
                     help="--per-problem 时的输出目录")
+    ap.add_argument("--owner", default=None,
+                    help="HydroOJ 上的 owner 用户ID (不填则交互询问)")
+    ap.add_argument("--pid-prefix", default=None,
+                    help="PID 前缀, 例如 'C' -> C1, C2 ... (不填且非交互时回退为 Gooj 数字ID)")
+    ap.add_argument("--pid-map", default=None,
+                    help="PID 映射 JSON 文件, 形如 {\"1\":\"C1008\",\"2\":\"C1009\"}")
+    # 位置参数: [owner] [pid1] [pid2] ...
+    #   仅传 owner 时所有题交互询问 PID; 传齐 PID 则非交互。
+    ap.add_argument("pos", nargs="*",
+                    help="可选位置参数: 第一个为 owner, 其余为各题 PID (按 Gooj ID 升序对应)")
     args = ap.parse_args()
+
+    # ---- 解析位置参数: pos[0]=owner, pos[1..]=逐题 PID ----
+    cli_owner = None
+    cli_pids = []
+    if args.pos:
+        if args.pos[0].isdigit() or len(args.pos) >= 2 or not args.owner:
+            # 第一个看起来像 owner (纯数字) 或用户没通过 --owner 指定 -> 当作 owner
+            if args.owner is None:
+                cli_owner = args.pos[0]
+                cli_pids = args.pos[1:]
+        else:
+            cli_pids = args.pos
+    if args.owner is not None:
+        cli_owner = args.owner
 
     if not os.path.isdir(args.src):
         print("错误: 题目目录不存在: %s" % args.src, file=sys.stderr)
@@ -298,25 +349,74 @@ def main():
         print("错误: %s 下没有找到数字命名的题目目录" % args.src, file=sys.stderr)
         sys.exit(1)
 
+    # ---- owner: 优先 位置参数/--owner, 否则交互询问, 再否则默认 1 ----
+    if cli_owner is not None:
+        owner = cli_owner
+    else:
+        owner = prompt("请输入 owner 用户ID (HydroOJ 上的用户ID)", default="1")
+    if not owner:
+        owner = "1"
+
+    # ---- PID 映射: 优先 --pid-map 文件 ----
+    pid_map = {}
+    if args.pid_map:
+        try:
+            with open(args.pid_map, "r", encoding="utf-8") as f:
+                pid_map = {str(k): str(v) for k, v in json.load(f).items()}
+        except (ValueError, OSError) as e:
+            print("警告: 读取 --pid-map 失败: %s" % e, file=sys.stderr)
+
+    # 位置参数提供的逐题 PID (按 Gooj ID 升序对应)。
+    # 若只给了部分/一个 PID, 则后续题目按最后一个 PID 中的数字递增。
+    pos_pid_by_gooj = {}
+    n_provided = min(len(cli_pids), len(pids))
+    for i in range(len(pids)):
+        gooj_id = int(pids[i])
+        if i < n_provided:
+            pos_pid_by_gooj[gooj_id] = cli_pids[i]
+        elif cli_pids:
+            # 从最后一个显式 PID 起自增
+            pos_pid_by_gooj[gooj_id] = inc_pid(cli_pids[-1], i - n_provided + 1)
+
+    def resolve_pid(gooj_id):
+        if str(gooj_id) in pid_map:
+            return pid_map[str(gooj_id)]
+        if gooj_id in pos_pid_by_gooj:
+            return pos_pid_by_gooj[gooj_id]
+        if args.pid_prefix:
+            return args.pid_prefix + str(gooj_id)
+        # 交互: 每题询问; 非交互且无前缀/映射/位置参数时回退为数字ID
+        info = db_info.get(gooj_id) or {}
+        label = info.get("title") or str(gooj_id)
+        return prompt("题目 [%s] (Gooj ID %s) 的 HydroOJ PID" % (label, gooj_id),
+                      default=str(gooj_id))
+
     ok = 0
     if args.per_problem:
         os.makedirs(args.out_dir, exist_ok=True)
         for pid in pids:
+            gooj_id = int(pid)
+            hydro_pid = resolve_pid(gooj_id)
             with tempfile.TemporaryDirectory() as stage:
-                if convert_problem(pid, os.path.join(args.src, pid),
-                                   db_info.get(int(pid)), stage):
-                    zpath = os.path.join(args.out_dir, "%s.zip" % pid)
+                if convert_problem(gooj_id, os.path.join(args.src, pid),
+                                   db_info.get(gooj_id), stage,
+                                   hydro_pid, owner):
+                    zpath = os.path.join(args.out_dir, "%s.zip" % hydro_pid)
                     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as zf:
                         zip_tree(zf, stage)
                     ok += 1
-                    print("已导出: %s" % zpath)
+                    print("已导出: Gooj#%s -> PID %s (%s)" % (pid, hydro_pid, zpath))
     else:
         os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
         with tempfile.TemporaryDirectory() as stage:
             for pid in pids:
-                if convert_problem(pid, os.path.join(args.src, pid),
-                                   db_info.get(int(pid)), stage):
-                    ok += 1
+                gooj_id = int(pid)
+                hydro_pid = resolve_pid(gooj_id)
+                convert_problem(gooj_id, os.path.join(args.src, pid),
+                                db_info.get(gooj_id), stage,
+                                hydro_pid, owner)
+                ok += 1
+                print("已处理: Gooj#%s -> PID %s" % (pid, hydro_pid))
             with zipfile.ZipFile(args.out, "w", zipfile.ZIP_DEFLATED) as zf:
                 zip_tree(zf, stage)
         print("已导出 %d 道题到: %s" % (ok, args.out))
