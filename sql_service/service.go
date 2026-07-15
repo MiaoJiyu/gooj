@@ -216,6 +216,16 @@ func UpdateSubmissionResult(subID uint, status string, results []TestResult) err
 		return errors.New("db not initialized")
 	}
 
+	// If the submission was cancelled while being judged, discard the result so a
+	// cancelled (running/queued) submission is not overwritten by a late result.
+	var cur Submission
+	if err := db.First(&cur, subID).Error; err != nil {
+		return err
+	}
+	if cur.Status == "cancelled" {
+		return nil
+	}
+
 	maxMemKb := 0
 	maxTimeMs := 0
 	totalScore := 0

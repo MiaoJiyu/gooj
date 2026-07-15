@@ -143,6 +143,17 @@ func NewRouter() http.Handler {
 	r.HandleFunc("/api/submission/{id}", GetSubmissionHandler).Methods("GET")
 	r.HandleFunc("/api/problem_stats", GetProblemStatsHandler).Methods("GET")
 
+	// Judge administration endpoints (require EditPermission)
+	r.HandleFunc("/api/submission/{id}/rejudge", RejudgeHandler).Methods("POST")
+	r.HandleFunc("/api/submission/{id}/cancel_eval", CancelEvalHandler).Methods("POST")
+	r.HandleFunc("/api/submission/{id}/cancel_score", CancelScoreHandler).Methods("POST")
+	r.HandleFunc("/api/submission/{id}/restore_score", RestoreScoreHandler).Methods("POST")
+	r.HandleFunc("/api/submissions/batch", BatchHandler).Methods("POST")
+
+	// Code similarity (plagiarism) check endpoints (require EditPermission)
+	r.HandleFunc("/api/similarity/check", SimilarityCheckHandler).Methods("POST")
+	r.HandleFunc("/api/similarity", SimilarityListHandler).Methods("GET")
+
 	// User profile endpoints
 	r.HandleFunc("/user/{username}", UserProfileHandler).Methods("GET")
 	r.HandleFunc("/api/user/{username}", GetUserProfileHandler).Methods("GET")

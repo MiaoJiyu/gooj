@@ -28,5 +28,22 @@ cmd:
 # Services configuration - control which services to start
 services:
   sql: true      # Enable/disable database service
-  judge: true    # Enable/disable judge service
+  judge: true    # Enable/disable judge service (local judge loop in the web server)
   file: true     # Enable/disable file service
+
+# Distributed judging configuration.
+# mode:
+#   local       - judge submissions in-process (default; used by the web server)
+#   coordinator - run the HTTP coordinator that distributes work to workers
+#                 (does NOT need the web module) and optionally also judges locally
+#   worker      - run a stateless judge worker that pulls tasks from a coordinator
+# coordinator_addr: HTTP address of the coordinator (used by workers)
+# coordinator_port: port the coordinator listens on
+# worker_concurrency: max concurrent judgments per worker process
+# local_judge: when true, the coordinator node also judges submissions locally
+judge:
+  mode: "local"
+  coordinator_addr: "http://localhost:9091"
+  coordinator_port: 9091
+  worker_concurrency: 4
+  local_judge: true

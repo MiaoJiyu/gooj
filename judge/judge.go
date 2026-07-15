@@ -64,7 +64,9 @@ func JudgeTest(cfg JudgeConfig) JudgeResult {
 	// Prepare Docker command with time and memory limits
 	absTmp, _ := filepath.Abs(cfg.WorkTmpPath)
 
-	// Simple shell command - run solution with ulimit for backup time limit
+	// Simple shell command - run solution. Program output/errors are redirected to
+	// files in the mounted work dir because a detached container's stdio is not
+	// captured by the docker client.
 	shellCmd := fmt.Sprintf("/usr/bin/time -v -o time.log ./solution < in.in > out.out 2>runtime.err; echo $? > rc")
 	dockerArgs := []string{
 		"run", "--rm",
@@ -78,16 +80,22 @@ func JudgeTest(cfg JudgeConfig) JudgeResult {
 		"bash", "-lc", shellCmd,
 	}
 
-	// Use context timeout for 2x time limit + buffer
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(int(cfg.TimeLimit*2)+5)*time.Second)
-	cmd := exec.CommandContext(ctx, "docker", dockerArgs...)
-	var outb bytes.Buffer
-	var errb bytes.Buffer
-	cmd.Stdout = &outb
-	cmd.Stderr = &errb
+	// Run the container detached and enforce the time limit ourselves. This is the
+	// fix for the memory leak: previously exec.CommandContext killed the docker
+	// CLIENT on timeout, but the container kept running inside the daemon and was
+	// never removed (--rm only removes a container when *it* exits). Now the
+	// container is always forcibly removed on timeout, so it cannot leak memory.
+	timeout := time.Duration(int(cfg.TimeLimit*2)+5) * time.Second
+	timedOut, runErr := runContainerDetached(dockerArgs, timeout)
+	if runErr != nil {
+		result.Info = fmt.Sprintf("Failed to run docker: %v", runErr)
+		result.Status = "runtime_error"
+		return result
+	}
 
-	err = cmd.Run()
-	cancel()
+	if timedOut {
+		err = fmt.Errorf("killed")
+	}
 
 	// Parse time and memory from time.log
 	parseTimeLog := func(path string) (timeMs int, memKB int) {
@@ -124,7 +132,8 @@ func JudgeTest(cfg JudgeConfig) JudgeResult {
 				fmt.Printf("Return code: %d\n", rc)
 			}
 		}
-		stderr := errb.String()
+		stderrBytes, _ := os.ReadFile(filepath.Join(absTmp, "runtime.err"))
+		stderr := string(stderrBytes)
 
 		if strings.Contains(err.Error(), "killed") || rc == 124 {
 			result.Status = "time_limit_exceeded"
@@ -142,8 +151,8 @@ func JudgeTest(cfg JudgeConfig) JudgeResult {
 			result.Status = "runtime_error"
 			result.Info = stderr
 			// Also capture any output that was produced
-			if outb.Len() > 0 {
-				result.Info += "\nProgram output:\n" + outb.String()
+			if ob, oe := os.ReadFile(filepath.Join(absTmp, "out.out")); oe == nil && len(ob) > 0 {
+				result.Info += "\nProgram output:\n" + string(ob)
 			}
 			tms, memKB := parseTimeLog(filepath.Join(absTmp, "time.log"))
 			result.RunTimeMs = tms
@@ -250,6 +259,63 @@ func JudgeTest(cfg JudgeConfig) JudgeResult {
 	return result
 }
 
+// runContainerDetached starts a Docker container in detached mode, waits for it to
+// finish (up to timeout), and guarantees the container is removed.
+//
+// Why detached instead of exec.CommandContext with "docker run --rm": when the Go
+// context deadline fires, exec.CommandContext sends SIGKILL to the docker CLI. That
+// kills the client but the container keeps running inside the Docker daemon (the
+// workload has no internal timeout), and because --rm only removes a container when
+// *it* exits, a hung container is never removed. Over many submissions (e.g. TLE /
+// infinite-loop solutions) these orphaned containers accumulate and leak memory in
+// the Docker daemon. Running detached and always "docker rm -f" at the end ensures
+// every container is cleaned up, so the daemon cannot leak containers/memory.
+func runContainerDetached(dockerArgs []string, timeout time.Duration) (timedOut bool, err error) {
+	// Build "docker run -d ..." so we obtain the container ID from stdout and can
+	// forcibly remove it later if needed.
+	startArgs := make([]string, 0, len(dockerArgs)+1)
+	if len(dockerArgs) > 0 && dockerArgs[0] == "run" {
+		startArgs = append(startArgs, "run", "-d")
+		startArgs = append(startArgs, dockerArgs[1:]...)
+	} else {
+		startArgs = append(startArgs, "-d")
+		startArgs = append(startArgs, dockerArgs...)
+	}
+
+	startCmd := exec.Command("docker", startArgs...)
+	idOut, startErr := startCmd.Output()
+	if startErr != nil {
+		return false, fmt.Errorf("docker run failed: %w", startErr)
+	}
+	containerID := strings.TrimSpace(string(idOut))
+	if containerID == "" {
+		return false, fmt.Errorf("docker run returned empty container id")
+	}
+
+	// Always attempt to remove the container. On normal exit --rm already removed it
+	// (so rm -f is a harmless no-op); on timeout or error this guarantees cleanup so
+	// the Docker daemon never leaks the container and its memory.
+	defer func() {
+		if rmErr := exec.Command("docker", "rm", "-f", containerID).Run(); rmErr != nil {
+			log.Printf("warning: failed to remove container %s: %v", containerID, rmErr)
+		}
+	}()
+
+	waitCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	waitCmd := exec.CommandContext(waitCtx, "docker", "wait", containerID)
+	var waitOut bytes.Buffer
+	waitCmd.Stdout = &waitOut
+	waitCmd.Stderr = &waitOut
+	if werr := waitCmd.Run(); werr != nil {
+		if waitCtx.Err() == context.DeadlineExceeded {
+			return true, nil
+		}
+		return false, fmt.Errorf("docker wait failed: %w", werr)
+	}
+	return false, nil
+}
+
 // StartJudge starts the judge loop as a goroutine. It polls the DB for queued submissions.
 func StartJudge() {
 	go func() {
@@ -293,7 +359,10 @@ func appendMessage(line string) {
 	_, _ = f.WriteString(line + "\n")
 }
 
-func processJob(sub sql_service.Submission) {
+// runJudge compiles and runs all test cases for a submission and returns the
+// resulting status and per-test results. It does NOT write to the database, so it
+// can be reused by both the local judge loop and distributed workers.
+func runJudge(sub sql_service.Submission) (status string, results []sql_service.TestResult) {
 	// create temp working dir under repository root ./tmp (ensure base exists)
 	tmpBase := "./tmp"
 	if err := os.MkdirAll(tmpBase, 0755); err != nil {
@@ -308,9 +377,7 @@ func processJob(sub sql_service.Submission) {
 		tmpDir, err = os.MkdirTemp("", fmt.Sprintf("sub-%d-", sub.ID))
 		if err != nil {
 			log.Printf("failed to create system tmp dir: %v", err)
-			_ = sql_service.UpdateSubmissionResult(sub.ID, "internal_error", nil)
-			appendMessage(fmt.Sprintf("%s submitted %d => INTERNAL_ERROR (tmp)", sub.Username, sub.ProblemID))
-			return
+			return "internal_error", nil
 		}
 	}
 	// try to make tmpDir world-readable/executable so other processes can inspect
@@ -322,9 +389,7 @@ func processJob(sub sql_service.Submission) {
 
 	if err := os.WriteFile(codePath, []byte(sub.Code), 0644); err != nil {
 		log.Printf("failed to write code file: %v", err)
-		_ = sql_service.UpdateSubmissionResult(sub.ID, "internal_error", nil)
-		appendMessage(fmt.Sprintf("%s submitted %d => INTERNAL_ERROR (write)", sub.Username, sub.ProblemID))
-		return
+		return "internal_error", nil
 	}
 
 	// verify file actually exists and is writable (some environments may hide errors)
@@ -395,35 +460,46 @@ func processJob(sub sql_service.Submission) {
 		}
 	}
 
-	results := []sql_service.TestResult{}
-	status := "ok"
+	results = []sql_service.TestResult{}
+	status = "ok"
 
 	// compile inside docker
 	// use absolute paths to avoid stray files
 	absTmp, _ := filepath.Abs(tmpDir)
-	// use absolute g++ path to avoid PATH issues inside image
-	compileCmd := "g++ solution.cpp -O2 -std=c++17 -o solution 2>compile.err; if [ -s compile.err ]; then cat compile.err >&2; exit 2; fi"
+	// use absolute g++ path to avoid PATH issues inside image.
+	// Redirect compiler output and exit code to files in the work dir so they
+	// survive the detached run (a detached container's stdio is not captured).
+	compileCmd := "g++ solution.cpp -O2 -std=c++17 -o solution > compile.err 2>&1; echo $? > compile.rc"
 	// compilation can require significantly more memory than runtime limits; raise compile memory cap
 	compileMem := 512
 	dockerCompileArgs := []string{"run", "--rm", "-v", absTmp + ":/work", "-w", "/work", "--network", "none", "--memory", fmt.Sprintf("%dm", compileMem), "--cpus", "1.0", "gcc-with-time", "bash", "-lc", fmt.Sprintf("%v", compileCmd)}
-	// dockerCompileArgs := []string{"run", "--rm", "-v", absTmp + ":/work", "-w", "/work", "--network", "none", "--memory", fmt.Sprintf("%dm", compileMem), "--cpus", "1.0", "gcc:12", "bash", "-lc", compileCmd}
-	// increase compile timeout to allow for image/pulled layers and heavier builds
-	cctx, ccancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer ccancel()
-	ccmd := exec.CommandContext(cctx, "docker", dockerCompileArgs...)
-	var cerr bytes.Buffer
-	var cout bytes.Buffer
-	ccmd.Stderr = &cerr
-	ccmd.Stdout = &cout
-	// log.Printf("running compile: docker %s", strings.Join(dockerCompileArgs, " "))
-	if err := ccmd.Run(); err != nil {
-		// compile error
+	// increase compile timeout to allow for image/pulled layers and heavier builds;
+	// run detached so a timeout cannot leak the container (see runContainerDetached).
+	compileTimedOut, compileErr := runContainerDetached(dockerCompileArgs, 10*time.Second)
+	if compileErr != nil || compileTimedOut {
 		status = "compile_error"
-		outStr := cout.String() + "\n" + cerr.String()
+		var outStr string
+		if compileTimedOut {
+			outStr = "compilation timed out"
+		} else {
+			outStr = fmt.Sprintf("compilation failed to start: %v", compileErr)
+		}
+		if eb, e := os.ReadFile(filepath.Join(absTmp, "compile.err")); e == nil {
+			outStr += "\n" + string(eb)
+		}
 		results = append(results, sql_service.TestResult{TestIndex: 0, Passed: false, Output: outStr, TimeMs: 0, MemoryKB: 0})
-		_ = sql_service.UpdateSubmissionResult(sub.ID, status, results)
-		appendMessage(fmt.Sprintf("%s submitted %d => COMPILE_ERROR : %v output=%s", sub.Username, sub.ProblemID, err, outStr))
-		return
+		return status, results
+	}
+
+	// read compile result written by the container
+	rcBytes, _ := os.ReadFile(filepath.Join(absTmp, "compile.rc"))
+	compileRC, _ := strconv.Atoi(strings.TrimSpace(string(rcBytes)))
+	if compileRC != 0 {
+		status = "compile_error"
+		eb, _ := os.ReadFile(filepath.Join(absTmp, "compile.err"))
+		outStr := string(eb)
+		results = append(results, sql_service.TestResult{TestIndex: 0, Passed: false, Output: outStr, TimeMs: 0, MemoryKB: 0})
+		return status, results
 	}
 
 	// run tests sequentially using JudgeTest
@@ -435,95 +511,91 @@ func processJob(sub sql_service.Submission) {
 		testGroups = v
 	} else {
 		// return error if test groups not found; we require test groups to determine how many tests to run
-		appendMessage(fmt.Sprintf("%s submitted %d => INTERNAL_ERROR (no test cases)", sub.Username, sub.ProblemID))
-		_ = sql_service.UpdateSubmissionResult(sub.ID, "internal_error", nil)
-		return
+		return "internal_error", nil
 	}
 
 	allPassed := true
 
 	for _, testGroup := range testGroups {
-
-		if testGroupMap, ok := testGroup.(map[string]any); !ok {
+		testGroupMap, ok := testGroup.(map[string]any)
+		if !ok {
 			// skip invalid test group
-			_ = sql_service.UpdateSubmissionResult(sub.ID, "internal_error", nil)
 			continue
-		} else {
-			// support both "tests" and "test_count" to specify number of tests in this group
-			tests := []int{}
-			if v, ok := testGroupMap["cases"].([]interface{}); ok {
-				for _, caseVal := range v {
-					if num, ok := caseVal.(float64); ok {
-						tests = append(tests, int(num))
-					}
+		}
+
+		// support both "cases" to specify the test indices in this group
+		tests := []int{}
+		if v, ok := testGroupMap["cases"].([]interface{}); ok {
+			for _, caseVal := range v {
+				if num, ok := caseVal.(float64); ok {
+					tests = append(tests, int(num))
 				}
-			} else {
-				_ = sql_service.UpdateSubmissionResult(sub.ID, "internal_error", nil)
+			}
+		} else {
+			continue
+		}
+
+		groupPassed := true
+
+		for _, i := range tests {
+			if !groupPassed {
+				// skip remaining tests in this group if one already failed
+				results = append(results, sql_service.TestResult{
+					TestIndex: i,
+					Passed:    false,
+					Output:    "Skipped due to previous failure in group",
+					TimeMs:    0,
+					MemoryKB:  0,
+					Status:    "skipped",
+				})
 				continue
 			}
 
-			groupPassed := true
+			inPath := filepath.Join("data", "problem", fmt.Sprintf("%d", sub.ProblemID), fmt.Sprintf("%d.in", i))
+			expectedPath := filepath.Join("data", "problem", fmt.Sprintf("%d", sub.ProblemID), fmt.Sprintf("%d.ans", i))
 
-			for _, i := range tests {
-				if !groupPassed {
-					// skip remaining tests in this group if one already failed
-					results = append(results, sql_service.TestResult{
-						TestIndex: i,
-						Passed:    false,
-						Output:    "Skipped due to previous failure in group",
-						TimeMs:    0,
-						MemoryKB:  0,
-						Status:    "skipped",
-					})
-					continue
-				}
-
-				inPath := filepath.Join("data", "problem", fmt.Sprintf("%d", sub.ProblemID), fmt.Sprintf("%d.in", i))
-				expectedPath := filepath.Join("data", "problem", fmt.Sprintf("%d", sub.ProblemID), fmt.Sprintf("%d.ans", i))
-
-				// Prepare configuration for this test
-				cfg := JudgeConfig{
-					TimeLimit:    timeLimit,
-					MemLimit:     memMB,
-					InputPath:    inPath,
-					WorkTmpPath:  tmpDir,
-					ExpectedPath: expectedPath,
-				}
-
-				// Run the test using the encapsulated function
-				testResult := JudgeTest(cfg)
-
-				// Convert JudgeResult to TestResult
-				testIdx := i
-				testPassed := testResult.Passed
-				testOutput := testResult.Info // for WA, Info contains the mismatch details; for RE, it contains the error message
-				testTimeMs := testResult.RunTimeMs
-				testMemKB := testResult.MemoryKB
-				testStatus := testResult.Status
-
-				// Store test result
-				results = append(results, sql_service.TestResult{
-					TestIndex: testIdx,
-					Passed:    testPassed,
-					Output:    testOutput,
-					// Expected:  testExpected,
-					TimeMs:   testTimeMs,
-					MemoryKB: testMemKB,
-					Status:   testStatus,
-					Score:    0, // scoring can be implemented later based on test groups or other criteria
-				})
-
-				// Handle different statuses
-				if !testPassed {
-					groupPassed = false
-					allPassed = false
-				}
+			// Prepare configuration for this test
+			cfg := JudgeConfig{
+				TimeLimit:    timeLimit,
+				MemLimit:     memMB,
+				InputPath:    inPath,
+				WorkTmpPath:  tmpDir,
+				ExpectedPath: expectedPath,
 			}
 
-			if groupPassed {
-				// if all tests in this group passed, we can continue to next group
-				results[len(results)-1].Score = int(testGroupMap["score"].(float64)) // assign group score to last test in group; adjust as needed for different scoring schemes
+			// Run the test using the encapsulated function
+			testResult := JudgeTest(cfg)
+
+			// Convert JudgeResult to TestResult
+			testIdx := i
+			testPassed := testResult.Passed
+			testOutput := testResult.Info // for WA, Info contains the mismatch details; for RE, it contains the error message
+			testTimeMs := testResult.RunTimeMs
+			testMemKB := testResult.MemoryKB
+			testStatus := testResult.Status
+
+			// Store test result
+			results = append(results, sql_service.TestResult{
+				TestIndex: testIdx,
+				Passed:    testPassed,
+				Output:    testOutput,
+				// Expected:  testExpected,
+				TimeMs:   testTimeMs,
+				MemoryKB: testMemKB,
+				Status:   testStatus,
+				Score:    0, // scoring can be implemented later based on test groups or other criteria
+			})
+
+			// Handle different statuses
+			if !testPassed {
+				groupPassed = false
+				allPassed = false
 			}
+		}
+
+		if groupPassed {
+			// if all tests in this group passed, assign the group score to the last test
+			results[len(results)-1].Score = int(testGroupMap["score"].(float64))
 		}
 	}
 
@@ -534,6 +606,16 @@ func processJob(sub sql_service.Submission) {
 		status = "not accepted"
 	}
 
+	return status, results
+}
+
+// processJob runs the judge and writes the result to the database. Used by the
+// local judge loop and by the coordinator's embedded judge.
+func processJob(sub sql_service.Submission) {
+	status, results := runJudge(sub)
+	if status == "" {
+		status = "internal_error"
+	}
 	_ = sql_service.UpdateSubmissionResult(sub.ID, status, results)
-	appendMessage(fmt.Sprintf("%s submitted %d => OK", sub.Username, sub.ProblemID))
+	appendMessage(fmt.Sprintf("%s submitted %d => %s", sub.Username, sub.ProblemID, status))
 }

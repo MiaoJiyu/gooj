@@ -21,6 +21,7 @@ type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Cmd      CmdConfig      `yaml:"cmd"`
 	Services ServicesConfig `yaml:"services"`
+	Judge    JudgeConfig    `yaml:"judge"`
 }
 
 // DatabaseConfig holds database configuration
@@ -60,6 +61,15 @@ type ServicesConfig struct {
 	SQL   bool `yaml:"sql"`
 	Judge bool `yaml:"judge"`
 	File  bool `yaml:"file"`
+}
+
+// JudgeConfig holds distributed-judge configuration
+type JudgeConfig struct {
+	Mode              string `yaml:"mode"`               // local | coordinator | worker
+	CoordinatorAddr   string `yaml:"coordinator_addr"`   // e.g. http://coordinator:9091
+	CoordinatorPort   int    `yaml:"coordinator_port"`   // port the coordinator listens on
+	WorkerConcurrency int    `yaml:"worker_concurrency"` // max concurrent judgments per worker
+	LocalJudge        bool   `yaml:"local_judge"`        // coordinator also judges locally
 }
 
 // GlobalConfig is the global configuration instance
@@ -171,4 +181,44 @@ func IsJudgeEnabled() bool {
 // IsFileEnabled returns whether file service is enabled
 func IsFileEnabled() bool {
 	return GetServiceEnabled("file")
+}
+
+// GetJudgeMode returns the distributed-judge mode (local, coordinator, worker).
+func GetJudgeMode() string {
+	if GlobalConfig == nil || GlobalConfig.Judge.Mode == "" {
+		return "local"
+	}
+	return GlobalConfig.Judge.Mode
+}
+
+// GetCoordinatorAddr returns the coordinator HTTP address for workers.
+func GetCoordinatorAddr() string {
+	if GlobalConfig == nil || GlobalConfig.Judge.CoordinatorAddr == "" {
+		return "http://localhost:9091"
+	}
+	return GlobalConfig.Judge.CoordinatorAddr
+}
+
+// GetCoordinatorPort returns the port the coordinator listens on.
+func GetCoordinatorPort() int {
+	if GlobalConfig == nil || GlobalConfig.Judge.CoordinatorPort == 0 {
+		return 9091
+	}
+	return GlobalConfig.Judge.CoordinatorPort
+}
+
+// GetWorkerConcurrency returns max concurrent judgments per worker.
+func GetWorkerConcurrency() int {
+	if GlobalConfig == nil || GlobalConfig.Judge.WorkerConcurrency == 0 {
+		return 4
+	}
+	return GlobalConfig.Judge.WorkerConcurrency
+}
+
+// GetCoordinatorLocalJudge reports whether the coordinator also judges locally.
+func GetCoordinatorLocalJudge() bool {
+	if GlobalConfig == nil {
+		return true
+	}
+	return GlobalConfig.Judge.LocalJudge
 }
