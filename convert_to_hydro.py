@@ -26,6 +26,8 @@ Hydro 导入格式 (hydro-compress) 每个题目一个顶层目录 <id>/:
   python3 convert_to_hydro.py 2 P1132 P1133                   # 位置参数: owner=2, 两题 PID 分别 P1132/P1133
   python3 convert_to_hydro.py 2 P1132                         # 只给首个 PID, 后续按数字递增: P1132, P1133, P1134 ...
   python3 convert_to_hydro.py 2                               # 位置参数仅 owner=2, PID 仍逐题交互询问
+  python3 convert_to_hydro.py --mysql 2 P1132                  # 从 MySQL 读取 (连接参数读 config/config.yaml 的 mysql 块)
+  python3 convert_to_hydro.py --mysql --mysql-host 127.0.0.1 --mysql-user gooj --mysql-password 'xxx' 2 P1132  # 命令行覆盖
 
 说明:
   - owner (HydroOJ 上的用户ID) 与每题的 PID (字符串) 取决于 HydroOJ 实际情况。
@@ -101,44 +103,117 @@ def build_testdata_config(memory_mb, time_ms, subtasks):
 # --------------------------------------------------------------------------- #
 # 读取数据源
 # --------------------------------------------------------------------------- #
-def load_db(db_path):
-    """返回 {id: dict(title, description, time_limit_ms, mem_limit_mb, nSubmit, nAccept)}。"""
+def _query_problems(cur):
+    """从 problems / submissions 表读取元信息, 返回 dict。数据库无关, 仅依赖列名一致。"""
+    problems = {}
+    cur.execute(
+        "SELECT id, title, description, time_limit_ms, mem_limit_mb "
+        "FROM problems"
+    )
+    for pid, title, desc, tl, ml in cur.fetchall():
+        problems[pid] = {
+            "title": title or "",
+            "description": desc or "",
+            "time_limit_ms": tl or 0,
+            "mem_limit_mb": ml or 0,
+            "nSubmit": None,
+            "nAccept": None,
+        }
+    # 提交统计
+    try:
+        cur.execute(
+            "SELECT problem_id, COUNT(*), "
+            "SUM(CASE WHEN status IN ('accepted','ok') THEN 1 ELSE 0 END) "
+            "FROM submissions GROUP BY problem_id"
+        )
+        for pid, total, acc in cur.fetchall():
+            if pid in problems:
+                problems[pid]["nSubmit"] = total or 0
+                problems[pid]["nAccept"] = acc or 0
+    except Exception:
+        pass
+    return problems
+
+
+def load_db_sqlite(db_path):
     problems = {}
     if not db_path or not os.path.exists(db_path):
         return problems
     try:
         con = sqlite3.connect(db_path)
         cur = con.cursor()
-        cur.execute(
-            "SELECT id, title, description, time_limit_ms, mem_limit_mb "
-            "FROM problems"
-        )
-        for pid, title, desc, tl, ml in cur.fetchall():
-            problems[pid] = {
-                "title": title or "",
-                "description": desc or "",
-                "time_limit_ms": tl or 0,
-                "mem_limit_mb": ml or 0,
-                "nSubmit": None,
-                "nAccept": None,
-            }
-        # 提交统计
-        try:
-            cur.execute(
-                "SELECT problem_id, COUNT(*), "
-                "SUM(CASE WHEN status IN ('accepted','ok') THEN 1 ELSE 0 END) "
-                "FROM submissions GROUP BY problem_id"
-            )
-            for pid, total, acc in cur.fetchall():
-                if pid in problems:
-                    problems[pid]["nSubmit"] = total or 0
-                    problems[pid]["nAccept"] = acc or 0
-        except sqlite3.Error:
-            pass
+        problems = _query_problems(cur)
         con.close()
     except sqlite3.Error as e:
-        print("警告: 读取数据库失败: %s" % e, file=sys.stderr)
+        print("警告: 读取 SQLite 失败: %s" % e, file=sys.stderr)
     return problems
+
+
+def load_db_mysql(cfg):
+    """cfg: dict(host, port, user, password, db). 返回与 load_db_sqlite 相同结构。"""
+    try:
+        import pymysql
+        connect = lambda: pymysql.connect(
+            host=cfg["host"], port=int(cfg["port"]), user=cfg["user"],
+            password=cfg["password"] or "", database=cfg["db"],
+            charset="utf8mb4", connect_timeout=10,
+        )
+        driver = "pymysql"
+    except ImportError:
+        try:
+            import mysql.connector
+            connect = lambda: mysql.connector.connect(
+                host=cfg["host"], port=int(cfg["port"]), user=cfg["user"],
+                password=cfg["password"] or "", database=cfg["db"],
+                charset="utf8mb4", connection_timeout=10,
+            )
+            driver = "mysql.connector"
+        except ImportError:
+            print("错误: 使用 MySQL 需要 pymysql 或 mysql-connector-python, "
+                  "请先 `pip install pymysql`", file=sys.stderr)
+            sys.exit(1)
+    try:
+        con = connect()
+        cur = con.cursor()
+        problems = _query_problems(cur)
+        cur.close()
+        con.close()
+        print("已从 MySQL (%s:%s/%s) 读取 %d 道题的元信息 [%s]"
+              % (cfg["host"], cfg["port"], cfg["db"], len(problems), driver))
+        return problems
+    except Exception as e:
+        print("错误: 连接 MySQL 失败: %s" % e, file=sys.stderr)
+        sys.exit(1)
+
+
+def load_mysql_cfg_from_yaml(yaml_path):
+    """尝试从 config/config.yaml 读取 database.mysql 块, 返回 dict 或 None。"""
+    if not os.path.exists(yaml_path):
+        return None
+    try:
+        import yaml  # 惰性导入, 避免 sqlite-only 用户缺少 PyYAML
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+        db = doc.get("database", {}) or {}
+        m = db.get("mysql", {}) or {}
+        if not m:
+            return None
+        return {
+            "host": str(m.get("host", "localhost")),
+            "port": int(m.get("port", 3306)),
+            "user": str(m.get("user", "root")),
+            "password": str(m.get("password", "")),
+            "db": str(m.get("dbname", "gooj")),
+        }
+    except Exception:
+        return None
+
+
+def load_db(db_path, mysql_cfg=None):
+    """mysql_cfg 为 None 时走 SQLite, 否则走 MySQL。"""
+    if mysql_cfg is not None:
+        return load_db_mysql(mysql_cfg)
+    return load_db_sqlite(db_path)
 
 
 def natural_key(name):
@@ -313,6 +388,14 @@ def main():
                     help="PID 前缀, 例如 'C' -> C1, C2 ... (不填且非交互时回退为 Gooj 数字ID)")
     ap.add_argument("--pid-map", default=None,
                     help="PID 映射 JSON 文件, 形如 {\"1\":\"C1008\",\"2\":\"C1009\"}")
+    # ---- MySQL 数据源 (可选, 与 --db 二选一) ----
+    ap.add_argument("--mysql", action="store_true",
+                    help="从 MySQL 读取题目数据 (而非 SQLite)。连接参数默认读 config/config.yaml 的 mysql 块")
+    ap.add_argument("--mysql-host", default=None, help="MySQL host (默认 config.yaml 或 localhost)")
+    ap.add_argument("--mysql-port", default=None, help="MySQL port (默认 3306)")
+    ap.add_argument("--mysql-user", default=None, help="MySQL user (默认 root)")
+    ap.add_argument("--mysql-password", default=None, help="MySQL password")
+    ap.add_argument("--mysql-db", default=None, help="MySQL database 名 (默认 gooj)")
     # 位置参数: [owner] [pid1] [pid2] ...
     #   仅传 owner 时所有题交互询问 PID; 传齐 PID 则非交互。
     ap.add_argument("pos", nargs="*",
@@ -337,7 +420,26 @@ def main():
         print("错误: 题目目录不存在: %s" % args.src, file=sys.stderr)
         sys.exit(1)
 
-    db_info = load_db(args.db)
+    # ---- 数据源: MySQL 或 SQLite ----
+    mysql_cfg = None
+    if args.mysql or args.mysql_host or args.mysql_port or args.mysql_user \
+            or args.mysql_password is not None or args.mysql_db:
+        # 优先命令行, 否则从 config/config.yaml 的 mysql 块取默认值
+        ycfg = load_mysql_cfg_from_yaml("config/config.yaml") or {
+            "host": "localhost", "port": 3306, "user": "root",
+            "password": "", "db": "gooj",
+        }
+        mysql_cfg = {
+            "host": args.mysql_host or ycfg["host"],
+            "port": int(args.mysql_port or ycfg["port"]),
+            "user": args.mysql_user or ycfg["user"],
+            "password": args.mysql_password if args.mysql_password is not None
+                        else ycfg["password"],
+            "db": args.mysql_db or ycfg["db"],
+        }
+        db_info = load_db(None, mysql_cfg)
+    else:
+        db_info = load_db(args.db)
     print("已从数据库读取 %d 道题的元信息" % len(db_info))
 
     pids = sorted(
