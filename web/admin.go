@@ -146,6 +146,72 @@ func BatchHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// RejudgeProblemHandler POST /api/problem/{id}/rejudge_all
+// Re-queues every submission of a problem. To guard against accidentally flooding
+// the judge machines, the first call (without confirm) only reports how many
+// submissions would be affected; the caller is expected to warn the operator and
+// then repeat the call with {"confirm": true} to actually re-queue them.
+func RejudgeProblemHandler(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireEdit(w, r); !ok {
+		return
+	}
+	pid, err := parseIDParam(r)
+	if err != nil {
+		http.Error(w, "invalid problem id", http.StatusBadRequest)
+		return
+	}
+	var body struct {
+		Confirm bool `json:"confirm"`
+	}
+	// A missing/invalid body is fine; default confirm=false.
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	count, err := sql_service.RejudgeProblem(uint(pid), body.Confirm)
+	if err != nil {
+		http.Error(w, "failed to rejudge problem: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if !body.Confirm {
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":           "preview",
+			"count":            count,
+			"warning":          "该题目共有 " + itoa(count) + " 条提交将被重测，可能短时间占用大量评测机资源。请确认后再次请求并携带 {\"confirm\":true} 执行。",
+			"requires_confirm": true,
+		})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"count":   count,
+		"message": "已重测 " + itoa(count) + " 条提交",
+	})
+}
+
+// itoa is a tiny helper to avoid importing strconv just for one conversion.
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	if neg {
+		i--
+		b[i] = '-'
+	}
+	return string(b[i:])
+}
+
 // writeJSONMessage writes a simple {status, message} JSON response.
 func writeJSONMessage(w http.ResponseWriter, status, message string) {
 	w.Header().Set("Content-Type", "application/json")

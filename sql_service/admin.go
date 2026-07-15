@@ -40,21 +40,34 @@ func CancelEvaluation(id uint) error {
 		Update("status", "cancelled").Error
 }
 
-// CancelScore disqualifies a submission: its score is no longer counted, but the
-// record and its evaluation result are kept.
+// CancelScore disqualifies a submission: its score is set to 0, its status is
+// changed to "score_cancelled" (shown greyed out as "成绩取消" in the UI), and the
+// disqualified flag is set so the record is kept but not counted in rankings.
 func CancelScore(id uint) error {
 	if db == nil {
 		return errors.New("db not initialized")
 	}
-	return db.Model(&Submission{}).Where("id = ?", id).Update("disqualified", true).Error
+	return db.Model(&Submission{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status":       "score_cancelled",
+		"score":        0,
+		"disqualified": true,
+		"updated_at":   time.Now(),
+	}).Error
 }
 
-// RestoreScore undoes CancelScore.
+// RestoreScore undoes CancelScore: clears the disqualified flag and resets the
+// status so the submission is no longer shown as "成绩取消". Note the score was
+// zeroed at cancel time, so the operator should re-judge (or the real score will
+// remain 0) to restore it.
 func RestoreScore(id uint) error {
 	if db == nil {
 		return errors.New("db not initialized")
 	}
-	return db.Model(&Submission{}).Where("id = ?", id).Update("disqualified", false).Error
+	return db.Model(&Submission{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status":       "not accepted",
+		"disqualified": false,
+		"updated_at":   time.Now(),
+	}).Error
 }
 
 // BatchSubmissionAction applies an administrative action to a set of submissions.
@@ -126,4 +139,51 @@ func GetSimilarityByProblem(problemID uint) ([]SimilarityRecord, error) {
 		return nil, err
 	}
 	return records, nil
+}
+
+// RejudgeProblem re-queues every non-cancelled submission of a problem so it will
+// be re-judged. It returns the number of submissions that would be (or were)
+// affected.
+//
+// When confirm is false it performs NO writes and just returns the count, so the
+// caller can warn the operator about the load before committing. A problem can
+// have a very large number of submissions; re-queuing them all at once can flood
+// the judge workers and starve other submissions, so the confirm step (plus a UI
+// warning) is the safety guard against accidentally hammering the judge machines.
+func RejudgeProblem(problemID uint, confirm bool) (int, error) {
+	if db == nil {
+		return 0, errors.New("db not initialized")
+	}
+	var subs []Submission
+	// Exclude both "cancelled" (eval cancelled) and "score_cancelled" (disqualified)
+	// submissions so a whole-problem rejudge never silently restores a disqualified
+	// score.
+	if err := db.Where("problem_id = ? AND status NOT IN ?", problemID, []string{"cancelled", "score_cancelled"}).Find(&subs).Error; err != nil {
+		return 0, err
+	}
+	if !confirm {
+		return len(subs), nil
+	}
+	ids := make([]uint, len(subs))
+	for i, s := range subs {
+		ids[i] = s.ID
+	}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if len(ids) == 0 {
+			return nil
+		}
+		if err := tx.Where("submission_id IN ?", ids).Delete(&TestResult{}).Error; err != nil {
+			return err
+		}
+		return tx.Model(&Submission{}).Where("id IN ?", ids).Updates(map[string]interface{}{
+			"status":       "queued",
+			"score":        0,
+			"disqualified": false,
+			"updated_at":   time.Now(),
+		}).Error
+	})
+	if err != nil {
+		return 0, err
+	}
+	return len(ids), nil
 }

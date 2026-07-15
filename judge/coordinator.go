@@ -51,10 +51,12 @@ func StartCoordinator() {
 
 	addr := fmt.Sprintf(":%d", config.GetCoordinatorPort())
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/judge/task", coord.handleTask)
-	mux.HandleFunc("/api/judge/result", coord.handleResult)
-	mux.HandleFunc("/api/judge/heartbeat", coord.handleHeartbeat)
-	mux.HandleFunc("/api/judge/workers", coord.handleWorkers)
+	// Protected endpoints require the shared auth token (if configured) to prevent
+	// unauthorized task claiming / result injection on untrusted networks.
+	mux.HandleFunc("/api/judge/task", coord.auth(coord.handleTask))
+	mux.HandleFunc("/api/judge/result", coord.auth(coord.handleResult))
+	mux.HandleFunc("/api/judge/heartbeat", coord.auth(coord.handleHeartbeat))
+	mux.HandleFunc("/api/judge/workers", coord.auth(coord.handleWorkers))
 	mux.HandleFunc("/api/judge/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -237,4 +239,24 @@ func requeueRunning() {
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// auth wraps a handler, requiring the configured shared token when one is set.
+// Workers pass the token via the ?token= query parameter or the X-Judge-Token header.
+func (c *coordinator) auth(next http.HandlerFunc) http.HandlerFunc {
+	token := config.GetJudgeAuthToken()
+	if token == "" {
+		return next
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		provided := r.URL.Query().Get("token")
+		if provided == "" {
+			provided = r.Header.Get("X-Judge-Token")
+		}
+		if provided != token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
 }

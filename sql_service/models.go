@@ -41,7 +41,7 @@ type Submission struct {
 	Username     string       `json:"username" gorm:"index;size:128"`
 	ProblemID    uint         `json:"problem_id" gorm:"index"`
 	Code         string       `json:"code" gorm:"type:text"`
-	Status       string       `json:"status" gorm:"size:32"`             // queued, running, ok, wa, tle, mle, compile_error, runtime_error, cancelled
+	Status       string       `json:"status" gorm:"size:32"`             // queued, running, accepted, not accepted, compile_error, runtime_error, time_limit_exceeded, memory_limit_exceeded, internal_error, cancelled
 	Score        int          `json:"score"`                             // Total score obtained
 	MaxMemoryKB  int          `json:"max_memory_kb"`                     // Maximum memory usage in KB
 	MaxTimeMs    int          `json:"max_time_ms"`                       // Maximum time usage in ms

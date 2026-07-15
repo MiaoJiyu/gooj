@@ -32,20 +32,26 @@ func StartWorker(coordinatorAddr, workerID string, concurrency int) {
 
 	log.Printf("judge worker %s starting: coordinator=%s concurrency=%d", workerID, coordinatorAddr, concurrency)
 
+	token := config.GetJudgeAuthToken()
+	taskURL := fmt.Sprintf("%s/api/judge/task?worker=%s", coordinatorAddr, workerID)
+	if token != "" {
+		taskURL += "&token=" + token
+	}
+
 	// Heartbeat loop: announce liveness and capacity to the coordinator.
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
-		postHeartbeat(coordinatorAddr, workerID, concurrency)
+		postHeartbeat(coordinatorAddr, workerID, concurrency, token)
 		for range ticker.C {
-			postHeartbeat(coordinatorAddr, workerID, concurrency)
+			postHeartbeat(coordinatorAddr, workerID, concurrency, token)
 		}
 	}()
 
 	// Worker pool: a bounded number of goroutines each pull and judge one task.
 	sem := make(chan struct{}, concurrency)
 	for {
-		sub, ok := fetchTask(coordinatorAddr, workerID)
+		sub, ok := fetchTask(taskURL)
 		if !ok {
 			time.Sleep(time.Second)
 			continue
@@ -57,7 +63,7 @@ func StartWorker(coordinatorAddr, workerID string, concurrency int) {
 			if status == "" {
 				status = "internal_error"
 			}
-			if err := postResult(coordinatorAddr, s.ID, status, results); err != nil {
+			if err := postResult(coordinatorAddr, s.ID, status, results, token); err != nil {
 				log.Printf("worker %s failed to report result for submission %d: %v", workerID, s.ID, err)
 			}
 		}(sub)
@@ -65,8 +71,7 @@ func StartWorker(coordinatorAddr, workerID string, concurrency int) {
 }
 
 // fetchTask asks the coordinator for the next queued submission.
-func fetchTask(addr, workerID string) (sql_service.Submission, bool) {
-	url := fmt.Sprintf("%s/api/judge/task?worker=%s", addr, workerID)
+func fetchTask(url string) (sql_service.Submission, bool) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return sql_service.Submission{}, false
@@ -86,7 +91,7 @@ func fetchTask(addr, workerID string) (sql_service.Submission, bool) {
 }
 
 // postResult reports a judgment back to the coordinator.
-func postResult(addr string, subID uint, status string, results []sql_service.TestResult) error {
+func postResult(addr string, subID uint, status string, results []sql_service.TestResult, token string) error {
 	body := map[string]interface{}{
 		"submission_id": subID,
 		"status":        status,
@@ -97,6 +102,9 @@ func postResult(addr string, subID uint, status string, results []sql_service.Te
 		return err
 	}
 	url := fmt.Sprintf("%s/api/judge/result", addr)
+	if token != "" {
+		url += "?token=" + token
+	}
 	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
 	if err != nil {
 		return err
@@ -106,12 +114,15 @@ func postResult(addr string, subID uint, status string, results []sql_service.Te
 }
 
 // postHeartbeat informs the coordinator this worker is alive and its capacity.
-func postHeartbeat(addr, workerID string, capacity int) {
+func postHeartbeat(addr, workerID string, capacity int, token string) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"worker_id": workerID,
 		"capacity":  capacity,
 	})
 	url := fmt.Sprintf("%s/api/judge/heartbeat", addr)
+	if token != "" {
+		url += "?token=" + token
+	}
 	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return

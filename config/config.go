@@ -15,6 +15,9 @@ const (
 	DatabaseTypeMySQL  DatabaseType = "mysql"
 )
 
+// DefaultKFactor is the default Elo K-factor used when not configured.
+const DefaultKFactor = 32
+
 // Config holds all configuration for the application
 type Config struct {
 	Database DatabaseConfig `yaml:"database"`
@@ -22,6 +25,7 @@ type Config struct {
 	Cmd      CmdConfig      `yaml:"cmd"`
 	Services ServicesConfig `yaml:"services"`
 	Judge    JudgeConfig    `yaml:"judge"`
+	Rating   RatingConfig   `yaml:"rating"`
 }
 
 // DatabaseConfig holds database configuration
@@ -69,11 +73,22 @@ type JudgeConfig struct {
 	CoordinatorAddr   string `yaml:"coordinator_addr"`   // e.g. http://coordinator:9091
 	CoordinatorPort   int    `yaml:"coordinator_port"`   // port the coordinator listens on
 	WorkerConcurrency int    `yaml:"worker_concurrency"` // max concurrent judgments per worker
+	PerTaskConcurrency int    `yaml:"per_task_concurrency"` // max test cases judged in parallel within one submission
 	LocalJudge        bool   `yaml:"local_judge"`        // coordinator also judges locally
+	AuthToken         string `yaml:"auth_token"`         // shared secret required by coordinator (empty = no auth)
+}
+
+// RatingConfig holds tunable rating-calculation parameters
+type RatingConfig struct {
+	KFactor    int     `yaml:"k_factor"`    // Elo K-factor (rating volatility)
+	RankWeight float64 `yaml:"rank_weight"` // weight of rank-based performance vs score-based (0..1)
 }
 
 // GlobalConfig is the global configuration instance
 var GlobalConfig *Config
+
+// configFilePath stores the path the config was loaded from, so it can be saved.
+var configFilePath string
 
 // Load reads and parses the configuration file
 func Load(path string) error {
@@ -88,7 +103,21 @@ func Load(path string) error {
 	}
 
 	GlobalConfig = &cfg
+	configFilePath = path
 	return nil
+}
+
+// Save writes the current GlobalConfig back to the loaded config file. This is
+// used by admin endpoints that customize runtime settings (e.g. rating weights).
+func Save() error {
+	if configFilePath == "" {
+		return fmt.Errorf("config file path unknown")
+	}
+	data, err := yaml.Marshal(GlobalConfig)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(configFilePath, data, 0644)
 }
 
 // GetDatabaseType returns the database type from config
@@ -215,10 +244,72 @@ func GetWorkerConcurrency() int {
 	return GlobalConfig.Judge.WorkerConcurrency
 }
 
+// GetPerTaskConcurrency returns how many test cases of a single submission may be
+// judged in parallel (single-task multi-threaded evaluation). A non-positive or
+// unset value defaults to 8 so a large submission cannot spawn unbounded Docker
+// containers and exhaust host memory.
+func GetPerTaskConcurrency() int {
+	if GlobalConfig == nil || GlobalConfig.Judge.PerTaskConcurrency <= 0 {
+		return 8
+	}
+	return GlobalConfig.Judge.PerTaskConcurrency
+}
+
 // GetCoordinatorLocalJudge reports whether the coordinator also judges locally.
 func GetCoordinatorLocalJudge() bool {
 	if GlobalConfig == nil {
 		return true
 	}
 	return GlobalConfig.Judge.LocalJudge
+}
+
+// GetJudgeAuthToken returns the shared secret required by the coordinator.
+// An empty token means authentication is disabled (suitable for trusted LANs).
+func GetJudgeAuthToken() string {
+	if GlobalConfig == nil {
+		return ""
+	}
+	return GlobalConfig.Judge.AuthToken
+}
+
+// SetRatingConfig updates the rating weights at runtime and persists them.
+func SetRatingConfig(kFactor int, rankWeight float64) error {
+	if GlobalConfig == nil {
+		return fmt.Errorf("config not loaded")
+	}
+	if kFactor <= 0 {
+		kFactor = DefaultKFactor
+	}
+	if rankWeight < 0 {
+		rankWeight = 0
+	}
+	if rankWeight > 1 {
+		rankWeight = 1
+	}
+	GlobalConfig.Rating.KFactor = kFactor
+	GlobalConfig.Rating.RankWeight = rankWeight
+	return Save()
+}
+
+// GetRatingKFactor returns the configured Elo K-factor (default 32).
+func GetRatingKFactor() int {
+	if GlobalConfig == nil || GlobalConfig.Rating.KFactor <= 0 {
+		return DefaultKFactor
+	}
+	return GlobalConfig.Rating.KFactor
+}
+
+// GetRatingRankWeight returns the configured rank-vs-score weight (default 1.0).
+func GetRatingRankWeight() float64 {
+	if GlobalConfig == nil {
+		return 1.0
+	}
+	w := GlobalConfig.Rating.RankWeight
+	if w < 0 {
+		w = 0
+	}
+	if w > 1 {
+		w = 1
+	}
+	return w
 }
