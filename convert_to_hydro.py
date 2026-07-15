@@ -46,10 +46,10 @@ def _y(v):
     return '"' + s + '"'
 
 
-def build_problem_yaml(pid, title, tags, n_submit, n_accept):
+def build_problem_yaml(pid, title, tags, n_submit, n_accept, owner):
     out = []
     out.append("pid: " + _y(str(pid)))
-    out.append("owner: 1")
+    out.append("owner: " + _y(str(owner)))
     out.append("title: " + _y(title if title else str(pid)))
     if tags:
         out.append("tag:")
@@ -150,7 +150,8 @@ def load_config(src_dir):
 # --------------------------------------------------------------------------- #
 # 转换单题 -> 暂存目录
 # --------------------------------------------------------------------------- #
-def convert_problem(pid, src_dir, db_info, stage_dir):
+def convert_problem(gooj_id, src_dir, db_info, stage_dir, hydro_pid, owner):
+    pid = hydro_pid
     cfg = load_config(src_dir)
 
     # 时空间限制: 优先 DB, 回退 config.json
@@ -234,12 +235,26 @@ def convert_problem(pid, src_dir, db_info, stage_dir):
             pid, title, tags,
             (db_info or {}).get("nSubmit"),
             (db_info or {}).get("nAccept"),
+            owner,
         ))
     with open(os.path.join(prob_dir, "problem_zh.md"), "w", encoding="utf-8") as f:
         f.write(desc if desc else title)
     with open(os.path.join(td_dir, "config.yaml"), "w", encoding="utf-8") as f:
         f.write(build_testdata_config(mem_mb, time_ms, subtasks))
     return True
+
+
+# --------------------------------------------------------------------------- #
+# 交互式输入
+# --------------------------------------------------------------------------- #
+def prompt(msg, default=None):
+    """交互式询问。非 TTY (管道/重定向) 时直接返回 default, 保证脚本可被非交互调用。"""
+    if not sys.stdin.isatty():
+        return default
+    if default is not None:
+        val = input("%s [%s]: " % (msg, default)).strip()
+        return val or default
+    return input("%s: " % msg).strip()
 
 
 # --------------------------------------------------------------------------- #
